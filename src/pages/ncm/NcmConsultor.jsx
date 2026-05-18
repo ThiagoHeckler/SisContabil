@@ -1,192 +1,505 @@
-import { useState, useRef } from 'react'
-import { Search, Loader2, AlertCircle, BookOpen } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import {
+  Search, PlusCircle, List, Calculator, Trash2,
+  Download, Save, RotateCcw, AlertCircle, CheckCircle,
+} from 'lucide-react'
+import * as XLSX from 'xlsx'
+import {
+  getAllNcm, insertNcm, deleteNcm, searchNcm,
+  getAllHistorico, insertHistorico, deleteHistorico, clearHistorico,
+} from './ncmStorage'
 import './NcmConsultor.css'
 
-const API = 'https://brasilapi.com.br/api/ncm/v1'
+// ── helpers ────────────────────────────────────────────────────────
+const fmtBRL  = n => Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const fmtPct  = n => Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + '%'
+const parsePt = s => parseFloat(String(s).replace(',', '.'))
 
-function useDebounce(fn, delay) {
-  const timer = useRef(null)
-  return (...args) => {
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => fn(...args), delay)
-  }
-}
+const TABS = [
+  { id: 'consulta',  icon: Search,     label: 'Consulta'    },
+  { id: 'cadastro',  icon: PlusCircle, label: 'Cadastro'    },
+  { id: 'listagem',  icon: List,       label: 'Listagem'    },
+  { id: 'calculo',   icon: Calculator, label: 'Cálculo ST'  },
+]
 
 export default function NcmConsultor() {
-  const [query, setQuery]       = useState('')
-  const [results, setResults]   = useState([])
-  const [selected, setSelected] = useState(null)
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState('')
-  const [searched, setSearched] = useState(false)
-
-  async function buscar(q) {
-    const term = q.trim()
-    if (!term) { setResults([]); setSearched(false); return }
-
-    setLoading(true)
-    setError('')
-    setSelected(null)
-
-    try {
-      const isCode = /^\d+$/.test(term.replace(/\./g, ''))
-      let url
-
-      if (isCode && term.replace(/\D/g, '').length === 8) {
-        // busca exata por código
-        url = `${API}/${term.replace(/\D/g, '')}`
-        const res = await fetch(url)
-        if (!res.ok) throw new Error('NCM não encontrado.')
-        const data = await res.json()
-        setResults([data])
-      } else {
-        // busca por descrição ou código parcial
-        url = `${API}?search=${encodeURIComponent(term)}`
-        const res = await fetch(url)
-        if (!res.ok) throw new Error('Erro ao consultar a API NCM.')
-        const data = await res.json()
-        setResults(Array.isArray(data) ? data.slice(0, 50) : [])
-      }
-      setSearched(true)
-    } catch (err) {
-      setError(err.message || 'Erro de conexão.')
-      setResults([])
-      setSearched(true)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const debouncedBuscar = useDebounce(buscar, 500)
-
-  function onChange(e) {
-    const v = e.target.value
-    setQuery(v)
-    debouncedBuscar(v)
-  }
-
-  function onKeyDown(e) {
-    if (e.key === 'Enter') { clearTimeout; buscar(query) }
-  }
+  const [tab, setTab] = useState('consulta')
 
   return (
     <div>
       <div className="page-header">
         <h1><Search size={22} /> Consultor NCM</h1>
-        <p>Pesquise códigos NCM por número (8 dígitos) ou por descrição do produto.</p>
+        <p>Cadastre NCMs com regras fiscais próprias, consulte e calcule ST (Pará).</p>
       </div>
 
-      {/* Barra de busca */}
-      <div className="card ncm-search-card">
-        <div className="ncm-search-bar">
-          {loading
-            ? <Loader2 size={18} className="ncm-search-icon spin" />
-            : <Search size={18} className="ncm-search-icon" />
-          }
-          <input
-            type="search"
-            placeholder="Digite o código NCM ou descrição... (ex: 8471.30, notebook)"
-            value={query}
-            onChange={onChange}
-            onKeyDown={onKeyDown}
-            className="ncm-search-input"
-            autoFocus
-          />
-        </div>
-        <p className="ncm-search-hint">
-          Pesquisa automática após digitar · <kbd>Enter</kbd> para busca imediata ·
-          Fonte: <a href="https://brasilapi.com.br" target="_blank" rel="noreferrer">BrasilAPI</a>
-        </p>
+      <div className="ncm-tabs">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            className={`ncm-tab ${tab === t.id ? 'ncm-tab--active' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            <t.icon size={15} /> {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* Erro */}
-      {error && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
-          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-          {error}
-        </div>
-      )}
+      <div className="ncm-body">
+        {tab === 'consulta' && <ConsultaTab />}
+        {tab === 'cadastro' && <CadastroTab onSaved={() => setTab('listagem')} />}
+        {tab === 'listagem' && <ListagemTab />}
+        {tab === 'calculo'  && <CalculoStTab />}
+      </div>
+    </div>
+  )
+}
 
-      {/* Detalhe do item selecionado */}
-      {selected && (
-        <div className="card ncm-detail">
-          <div className="card-title"><BookOpen size={16} /> Detalhes do NCM</div>
-          <div className="ncm-detail-grid">
-            <div className="ncm-detail-item">
-              <span className="ncm-detail-label">Código NCM</span>
-              <span className="ncm-detail-value ncm-code">{fmtNcm(selected.codigo)}</span>
-            </div>
-            <div className="ncm-detail-item">
-              <span className="ncm-detail-label">Descrição</span>
-              <span className="ncm-detail-value">{selected.descricao}</span>
-            </div>
-            {selected.data_inicio && (
-              <div className="ncm-detail-item">
-                <span className="ncm-detail-label">Vigência</span>
-                <span className="ncm-detail-value">
-                  {fmtDt(selected.data_inicio)}
-                  {selected.data_fim ? ` até ${fmtDt(selected.data_fim)}` : ' (em vigor)'}
-                </span>
-              </div>
-            )}
-            {selected.tipo_ato && (
-              <div className="ncm-detail-item">
-                <span className="ncm-detail-label">Ato legal</span>
-                <span className="ncm-detail-value">
-                  {selected.tipo_ato} {selected.numero_ato}/{selected.ano_ato}
-                </span>
-              </div>
-            )}
-          </div>
-          <div className="alert alert-info" style={{ marginTop: '1rem' }}>
-            <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-            <span>
-              Para alíquotas de II, IPI e outros tributos consulte a TIPI vigente
-              (Decreto 11.158/2022) e a tabela ICMS do seu estado.
-            </span>
-          </div>
-        </div>
-      )}
+// ── Aba: Consulta ───────────────────────────────────────────────────
+function ConsultaTab() {
+  const [query,   setQuery]   = useState('')
+  const [results, setResults] = useState([])
+  const [searched, setSearched] = useState(false)
 
-      {/* Lista de resultados */}
-      {results.length > 0 && (
-        <div className="card ncm-results">
-          <div className="card-title">
-            {results.length} resultado(s){results.length === 50 ? ' (exibindo os primeiros 50)' : ''}
-          </div>
-          <div className="ncm-list">
-            {results.map(item => (
-              <button
-                key={item.codigo}
-                className={`ncm-item ${selected?.codigo === item.codigo ? 'ncm-item--active' : ''}`}
-                onClick={() => setSelected(s => s?.codigo === item.codigo ? null : item)}
-              >
-                <span className="ncm-item__code">{fmtNcm(item.codigo)}</span>
-                <span className="ncm-item__desc">{item.descricao}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+  function buscar(q) {
+    const t = q.trim()
+    setSearched(!!t)
+    setResults(t ? searchNcm(t) : [])
+  }
 
-      {searched && !loading && results.length === 0 && !error && (
+  function onChange(e) {
+    const v = e.target.value
+    setQuery(v)
+    buscar(v)
+  }
+
+  return (
+    <div className="card">
+      <div className="card-title"><Search size={16} /> Consulta Rápida de NCM</div>
+
+      <div className="field">
+        <label>NCM ou nome do produto</label>
+        <input
+          type="search"
+          placeholder="Ex: 2008, leite, biscoito…"
+          value={query}
+          onChange={onChange}
+          autoFocus
+        />
+        <span className="hint">Pesquisa na base local cadastrada.</span>
+      </div>
+
+      {searched && results.length === 0 && (
         <div className="alert alert-warn">
-          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-          Nenhum NCM encontrado para <strong>"{query}"</strong>.
-          Tente um código diferente ou outra descrição.
+          <AlertCircle size={15} style={{ flexShrink: 0 }} />
+          Nenhum NCM encontrado. Acesse a aba <b>Cadastro</b> para adicionar.
+        </div>
+      )}
+
+      {results.length > 0 && (
+        <div className="ncm-table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>NCM</th>
+                <th>Nome do Produto</th>
+                <th>Tem MVA</th>
+                <th>MVA %</th>
+                <th>Econect</th>
+                <th>Trib. Normal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.map(r => (
+                <tr key={r.id}>
+                  <td className="mono">{r.ncm}</td>
+                  <td>{r.nomeProduto}</td>
+                  <td>{r.temMva ? <span className="badge badge-green">Sim</span> : <span className="badge badge-gray">Não</span>}</td>
+                  <td>{r.temMva && r.mvaValor != null ? fmtPct(r.mvaValor) : '—'}</td>
+                  <td>{r.resultadoEconect || '—'}</td>
+                  <td>{r.tributadoNormalmente ? <span className="badge badge-blue">Sim</span> : <span className="badge badge-gray">Não</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
   )
 }
 
-function fmtNcm(code) {
-  if (!code) return ''
-  const s = String(code).padStart(8, '0')
-  return `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6)}`
+// ── Aba: Cadastro ───────────────────────────────────────────────────
+const EMPTY_FORM = {
+  ncm: '', nomeProduto: '', temMva: false, mvaValor: '',
+  tributadoNormalmente: false, resultadoEconect: '',
 }
 
-function fmtDt(s) {
-  if (!s) return ''
-  return new Date(s).toLocaleDateString('pt-BR')
+function CadastroTab({ onSaved }) {
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [msg,  setMsg]  = useState(null)
+
+  function set(k, v) { setForm(f => ({ ...f, [k]: v })); setMsg(null) }
+
+  function salvar() {
+    if (!form.ncm.trim() || !form.nomeProduto.trim()) {
+      setMsg({ type: 'error', text: 'NCM e Nome do Produto são obrigatórios.' })
+      return
+    }
+    if (form.temMva) {
+      const v = parsePt(form.mvaValor)
+      if (isNaN(v) || v < 0) {
+        setMsg({ type: 'error', text: 'Valor de MVA inválido.' })
+        return
+      }
+    }
+    const entry = {
+      ncm:                 form.ncm.trim(),
+      nomeProduto:         form.nomeProduto.trim(),
+      temMva:              form.temMva,
+      mvaValor:            form.temMva ? parsePt(form.mvaValor) : null,
+      tributadoNormalmente:form.tributadoNormalmente,
+      resultadoEconect:    form.resultadoEconect.trim(),
+    }
+    insertNcm(entry)
+    setMsg({ type: 'success', text: 'NCM cadastrada com sucesso!' })
+    setForm(EMPTY_FORM)
+  }
+
+  return (
+    <div className="card">
+      <div className="card-title"><PlusCircle size={16} /> Cadastro de NCM</div>
+
+      <div className="field-row cols-2">
+        <div className="field">
+          <label>NCM *</label>
+          <input type="text" placeholder="Ex: 19059090" value={form.ncm}
+            onChange={e => set('ncm', e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Nome do Produto *</label>
+          <input type="text" placeholder="Ex: Biscoito wafer" value={form.nomeProduto}
+            onChange={e => set('nomeProduto', e.target.value)} />
+        </div>
+      </div>
+
+      <div className="field-row cols-2">
+        <div className="field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.temMva}
+              onChange={e => set('temMva', e.target.checked)} />
+            Tem MVA?
+          </label>
+          {form.temMva && (
+            <input type="text" placeholder="Ex: 30,37" value={form.mvaValor}
+              onChange={e => set('mvaValor', e.target.value)}
+              style={{ marginTop: '.5rem' }} />
+          )}
+        </div>
+        <div className="field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.tributadoNormalmente}
+              onChange={e => set('tributadoNormalmente', e.target.checked)} />
+            Tributado Normalmente?
+          </label>
+        </div>
+      </div>
+
+      <div className="field">
+        <label>Resultado Econect</label>
+        <input type="text" placeholder="Ex: ST, DIFAL, NORMAL…"
+          value={form.resultadoEconect}
+          onChange={e => set('resultadoEconect', e.target.value)} />
+      </div>
+
+      {msg && (
+        <div className={`alert alert-${msg.type === 'error' ? 'error' : 'success'}`}
+          style={{ marginBottom: '1rem' }}>
+          {msg.type === 'error'
+            ? <AlertCircle size={15} style={{ flexShrink: 0 }} />
+            : <CheckCircle size={15} style={{ flexShrink: 0 }} />
+          }
+          {msg.text}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '.75rem' }}>
+        <button className="btn btn-primary" onClick={salvar}>
+          <Save size={15} /> Salvar NCM
+        </button>
+        <button className="btn btn-ghost" onClick={() => { setForm(EMPTY_FORM); setMsg(null) }}>
+          <RotateCcw size={15} /> Limpar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Aba: Listagem ───────────────────────────────────────────────────
+function ListagemTab() {
+  const [data,   setData]   = useState([])
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState('Todos')
+
+  const load = useCallback(() => setData(getAllNcm()), [])
+  useEffect(() => { load() }, [load])
+
+  const visible = data.filter(x => {
+    const t = search.toLowerCase()
+    const matchSearch = !t || x.ncm.toLowerCase().includes(t) || x.nomeProduto.toLowerCase().includes(t)
+    const matchMva = filter === 'Todos' ? true : filter === 'Com MVA' ? x.temMva : !x.temMva
+    return matchSearch && matchMva
+  })
+
+  function excluir(id) {
+    if (!confirm('Excluir este NCM?')) return
+    deleteNcm(id)
+    load()
+  }
+
+  return (
+    <div className="card">
+      <div className="card-title" style={{ justifyContent: 'space-between' }}>
+        <span><List size={16} /> Listagem de NCMs</span>
+        <span className="badge badge-gray">{data.length} registros</span>
+      </div>
+
+      <div className="field-row cols-2" style={{ marginBottom: '1rem' }}>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <input type="search" placeholder="Pesquisar nome ou NCM…"
+            value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <select value={filter} onChange={e => setFilter(e.target.value)}>
+            <option>Todos</option>
+            <option>Com MVA</option>
+            <option>Sem MVA</option>
+          </select>
+        </div>
+      </div>
+
+      {visible.length === 0 ? (
+        <div className="alert alert-info">
+          <AlertCircle size={15} style={{ flexShrink: 0 }} />
+          Nenhum NCM encontrado. Acesse a aba <b>Cadastro</b> para adicionar.
+        </div>
+      ) : (
+        <div className="ncm-table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>NCM</th>
+                <th>Nome</th>
+                <th>MVA</th>
+                <th>Trib. Normal</th>
+                <th>Econect</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map(r => (
+                <tr key={r.id}>
+                  <td className="mono">{r.ncm}</td>
+                  <td>{r.nomeProduto}</td>
+                  <td>
+                    {r.temMva
+                      ? <span className="badge badge-yellow">{fmtPct(r.mvaValor ?? 0)}</span>
+                      : <span className="badge badge-gray">—</span>
+                    }
+                  </td>
+                  <td>{r.tributadoNormalmente
+                    ? <span className="badge badge-blue">Sim</span>
+                    : <span className="badge badge-gray">Não</span>
+                  }</td>
+                  <td>{r.resultadoEconect || '—'}</td>
+                  <td>
+                    <button className="btn-icon-red" onClick={() => excluir(r.id)} title="Excluir">
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Aba: Cálculo ST ─────────────────────────────────────────────────
+function CalculoStTab() {
+  const [nota,     setNota]     = useState('')
+  const [base,     setBase]     = useState('')
+  const [mva,      setMva]      = useState('')
+  const [historico, setHistorico] = useState([])
+  const [searchNota, setSearchNota] = useState('')
+  const [msg,      setMsg]      = useState(null)
+
+  const load = useCallback(() => setHistorico(getAllHistorico()), [])
+  useEffect(() => { load() }, [load])
+
+  function calcular() {
+    const bv = parsePt(base)
+    const mv = parsePt(mva)
+
+    if (isNaN(bv) || bv <= 0) { setMsg({ type: 'error', text: 'Informe um valor de base válido.' }); return }
+    if (isNaN(mv) || mv < 0)  { setMsg({ type: 'error', text: 'Informe um percentual de MVA válido.' }); return }
+
+    const nNota  = nota.trim() || 'S/N'
+    const icms   = bv * 0.12
+    const baseSt = bv + bv * (mv / 100)
+    const icmsSt = baseSt * 0.19 - icms
+
+    insertHistorico({
+      nota:    nNota,
+      base:    fmtBRL(bv),
+      mva:     fmtPct(mv),
+      icms:    fmtBRL(icms),
+      baseSt:  fmtBRL(baseSt),
+      icmsSt:  fmtBRL(icmsSt),
+    })
+    load()
+    setBase('')
+    setMva('')
+    setMsg({ type: 'success', text: `Cálculo salvo para NF ${nNota}.` })
+  }
+
+  function excluir(id) {
+    deleteHistorico(id)
+    load()
+  }
+
+  function limparTudo() {
+    if (!confirm('Apagar TODO o histórico de cálculos ST?')) return
+    clearHistorico()
+    load()
+  }
+
+  function exportarExcel() {
+    const rows = visible.map(h => ({
+      'Nota':         h.nota,
+      'Base Item':    h.base,
+      'MVA %':        h.mva,
+      'ICMS (12%)':   h.icms,
+      'Base ST':      h.baseSt,
+      'ICMS ST (19%)':h.icmsSt,
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    ws['!cols'] = [{ wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'ST Pará')
+    const hoje = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `Relatorio_ST_Para_${hoje}.xlsx`)
+  }
+
+  const visible = historico.filter(h =>
+    !searchNota.trim() || h.nota.toLowerCase().includes(searchNota.toLowerCase())
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {/* Formulário */}
+      <div className="card">
+        <div className="card-title"><Calculator size={16} /> Cálculo de ST — Pará (ICMS 12% / ST 19%)</div>
+
+        <div className="field-row cols-2">
+          <div className="field">
+            <label>Número da Nota</label>
+            <input type="text" placeholder="Ex: 12345 (opcional)"
+              value={nota} onChange={e => { setNota(e.target.value); setMsg(null) }} />
+          </div>
+          <div className="field">
+            <label>Valor da Base do Item (R$)</label>
+            <input type="text" placeholder="Ex: 100,00"
+              value={base} onChange={e => { setBase(e.target.value); setMsg(null) }} />
+          </div>
+        </div>
+
+        <div className="field" style={{ maxWidth: 240 }}>
+          <label>Percentual do MVA (%)</label>
+          <input type="text" placeholder="Ex: 30,37"
+            value={mva} onChange={e => { setMva(e.target.value); setMsg(null) }} />
+        </div>
+
+        {msg && (
+          <div className={`alert alert-${msg.type === 'error' ? 'error' : 'success'}`}
+            style={{ marginBottom: '1rem' }}>
+            {msg.type === 'error'
+              ? <AlertCircle size={15} style={{ flexShrink: 0 }} />
+              : <CheckCircle size={15} style={{ flexShrink: 0 }} />
+            }
+            {msg.text}
+          </div>
+        )}
+
+        <div className="st-formula-box">
+          <b>Fórmulas:</b><br />
+          ICMS = Base × 12% &nbsp;|&nbsp;
+          Base ST = Base × (1 + MVA%) &nbsp;|&nbsp;
+          ICMS ST = (Base ST × 19%) − ICMS
+        </div>
+
+        <button className="btn btn-primary" onClick={calcular}>
+          <Calculator size={15} /> Calcular e Salvar
+        </button>
+      </div>
+
+      {/* Histórico */}
+      <div className="card">
+        <div className="card-title" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '.5rem' }}>
+          <span>Histórico de Cálculos</span>
+          <div style={{ display: 'flex', gap: '.5rem' }}>
+            <button className="btn btn-primary btn-sm" onClick={exportarExcel}
+              disabled={!visible.length}>
+              <Download size={13} /> Excel
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={limparTudo}>
+              <Trash2 size={13} /> Limpar tudo
+            </button>
+          </div>
+        </div>
+
+        <div className="field" style={{ marginBottom: '1rem' }}>
+          <input type="search" placeholder="Filtrar por número da nota…"
+            value={searchNota} onChange={e => setSearchNota(e.target.value)} />
+        </div>
+
+        {visible.length === 0 ? (
+          <p style={{ color: 'var(--muted)', fontSize: '.9rem' }}>Nenhum cálculo no histórico.</p>
+        ) : (
+          <div className="ncm-table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Nota</th>
+                  <th className="right">Base Item</th>
+                  <th className="right">MVA %</th>
+                  <th className="right">ICMS (12%)</th>
+                  <th className="right">Base ST</th>
+                  <th className="right">ICMS ST (19%)</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map(h => (
+                  <tr key={h.id}>
+                    <td className="mono">{h.nota}</td>
+                    <td className="right">{h.base}</td>
+                    <td className="right">{h.mva}</td>
+                    <td className="right">{h.icms}</td>
+                    <td className="right">{h.baseSt}</td>
+                    <td className="right"><b>{h.icmsSt}</b></td>
+                    <td>
+                      <button className="btn-icon-red" onClick={() => excluir(h.id)}>
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }

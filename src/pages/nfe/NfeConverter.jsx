@@ -1,224 +1,267 @@
-import { useState, useCallback } from 'react'
-import { FileSpreadsheet, Upload, Download, Trash2, FileX, CheckCircle } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import { useState, useCallback, useMemo } from 'react'
+import {
+  FileSpreadsheet, Upload, Download, RotateCcw,
+  CheckCircle, AlertCircle, Info,
+} from 'lucide-react'
 import { parseNfe } from './nfeParser'
+import { generateExcel } from './excelGenerator'
 import './NfeConverter.css'
 
-export default function NfeConverter() {
-  const [notas, setNotas] = useState([])
-  const [dragging, setDragging] = useState(false)
-  const [erros, setErros] = useState([])
+const fmtBRL = n =>
+  Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-  async function processFiles(files) {
-    const xmlFiles = Array.from(files).filter(f =>
-      f.name.toLowerCase().endsWith('.xml')
-    )
-    if (!xmlFiles.length) {
-      setErros(e => [...e, 'Nenhum arquivo XML encontrado nos arquivos selecionados.'])
+const RULE_LABEL = {
+  'ICMS-ST':     { label: 'ICMS-ST',     cls: 'rule-st' },
+  'DIFERENCIAL': { label: 'DIFERENCIAL', cls: 'rule-dif' },
+  'DIFAL':       { label: 'DIFAL',       cls: 'rule-difal' },
+  'NORMAL':      { label: 'NORMAL',      cls: 'rule-normal' },
+}
+
+export default function NfeConverter() {
+  const [data,     setData]     = useState(null)   // { nfeNumber, destUF, items }
+  const [dragging, setDragging] = useState(false)
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState('')
+
+  async function processFile(file) {
+    if (!file.name.toLowerCase().endsWith('.xml')) {
+      setError('Selecione um arquivo .xml de NF-e.')
       return
     }
-
-    const newErros = []
-    const newNotas = []
-
-    await Promise.all(xmlFiles.map(async file => {
-      try {
-        const text = await file.text()
-        const nota = parseNfe(text, file.name)
-        newNotas.push(nota)
-      } catch (err) {
-        newErros.push(`${file.name}: ${err.message}`)
-      }
-    }))
-
-    setNotas(prev => {
-      const existingChaves = new Set(prev.map(n => n.chave))
-      const unique = newNotas.filter(n => !existingChaves.has(n.chave))
-      return [...prev, ...unique]
-    })
-    setErros(e => [...e, ...newErros])
+    setLoading(true)
+    setError('')
+    setData(null)
+    try {
+      const text = await file.text()
+      const result = parseNfe(text)
+      setData(result)
+    } catch (err) {
+      setError(err.message || 'Erro ao processar o arquivo.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const onDrop = useCallback(async e => {
     e.preventDefault()
     setDragging(false)
-    await processFiles(e.dataTransfer.files)
+    const file = e.dataTransfer.files[0]
+    if (file) await processFile(file)
   }, [])
 
   async function onFileInput(e) {
-    await processFiles(e.target.files)
+    const file = e.target.files[0]
+    if (file) await processFile(file)
     e.target.value = ''
   }
 
-  function remover(idx) {
-    setNotas(n => n.filter((_, i) => i !== idx))
-  }
-
-  function limparTudo() {
-    setNotas([])
-    setErros([])
+  function limpar() {
+    setData(null)
+    setError('')
   }
 
   function exportar() {
-    if (!notas.length) return
-
-    const rows = notas.map(n => ({
-      'Chave NF-e':         n.chave,
-      'Número NF':          n.nNF,
-      'Série':              n.serie,
-      'Data Emissão':       n.dhEmi,
-      'CNPJ Emitente':      n.cnpjEmit,
-      'Emitente':           n.xNomeEmit,
-      'UF Emitente':        n.ufEmit,
-      'CNPJ/CPF Destinatário': n.cnpjDest,
-      'Destinatário':       n.xNomeDest,
-      'UF Destinatário':    n.ufDest,
-      'Natureza Op.':       n.natOp,
-      'Finalidade':         n.finNFe,
-      'Qtd Itens':          n.qtdItens,
-      'Vl. Produtos (R$)':  n.vProd,
-      'Vl. Frete (R$)':     n.vFrete,
-      'Vl. Desconto (R$)':  n.vDesc,
-      'Vl. IPI (R$)':       n.vIPI,
-      'Vl. ICMS (R$)':      n.vICMS,
-      'Vl. PIS (R$)':       n.vPIS,
-      'Vl. COFINS (R$)':    n.vCOFINS,
-      'Vl. Total NF (R$)':  n.vNF,
-    }))
-
-    const ws = XLSX.utils.json_to_sheet(rows)
-
-    // larguras aproximadas das colunas
-    ws['!cols'] = [
-      { wch: 46 }, { wch: 10 }, { wch: 6 }, { wch: 20 }, { wch: 18 },
-      { wch: 30 }, { wch: 6 }, { wch: 20 }, { wch: 30 }, { wch: 6 },
-      { wch: 25 }, { wch: 18 }, { wch: 9 }, { wch: 16 }, { wch: 14 },
-      { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
-      { wch: 16 },
-    ]
-
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'NF-e')
-
-    const hoje = new Date().toISOString().slice(0, 10)
-    XLSX.writeFile(wb, `nfe_export_${hoje}.xlsx`)
+    if (!data) return
+    const xml = generateExcel(data.items, data.nfeNumber)
+    const blob = new Blob([xml], { type: 'application/vnd.ms-excel' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `NFe-${data.nfeNumber || 'export'}.xls`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
-  const fmtBRL = n => isNaN(n) ? '-' :
-    Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const stats = useMemo(() => {
+    if (!data) return null
+    const s = { total: data.items.length, st: 0, dif: 0, difal: 0, normal: 0, warnings: 0 }
+    data.items.forEach(i => {
+      if (i.ruleType === 'ICMS-ST')      s.st++
+      else if (i.ruleType === 'DIFERENCIAL') s.dif++
+      else if (i.ruleType === 'DIFAL')   s.difal++
+      else s.normal++
+      if (i.warnings.length) s.warnings++
+    })
+    return s
+  }, [data])
 
   return (
     <div>
       <div className="page-header">
         <h1><FileSpreadsheet size={22} /> Conversor NF-e</h1>
-        <p>Importe XMLs de NF-e e exporte como planilha Excel (.xlsx).</p>
+        <p>
+          Importe um XML de NF-e, aplique regras fiscais por NCM (PA/GO) e exporte
+          planilha Excel com fórmulas de ICMS-ST, DIFERENCIAL e DIFAL.
+        </p>
       </div>
 
       {/* Dropzone */}
-      <div
-        className={`dropzone ${dragging ? 'dropzone--active' : ''}`}
-        onDragOver={e => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-      >
-        <Upload size={32} className="dropzone__icon" />
-        <p className="dropzone__title">Arraste XMLs de NF-e aqui</p>
-        <p className="dropzone__sub">ou</p>
-        <label className="btn btn-secondary" style={{ cursor: 'pointer' }}>
-          Selecionar arquivos
-          <input
-            type="file" accept=".xml" multiple hidden
-            onChange={onFileInput}
-          />
-        </label>
-        <p className="dropzone__hint">Aceita múltiplos XMLs simultaneamente</p>
-      </div>
-
-      {/* Erros de parsing */}
-      {erros.length > 0 && (
-        <div className="alert alert-warn" style={{ marginBottom: '1rem' }}>
-          <FileX size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-          <div>
-            <strong>Avisos de importação:</strong>
-            <ul style={{ paddingLeft: '1rem', marginTop: '.25rem' }}>
-              {erros.map((e, i) => <li key={i}>{e}</li>)}
-            </ul>
-          </div>
+      {!data && (
+        <div
+          className={`nfe-dropzone ${dragging ? 'nfe-dropzone--active' : ''}`}
+          onDragOver={e => { e.preventDefault(); setDragging(true) }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+        >
+          {loading ? (
+            <div className="nfe-loading">
+              <span className="spin-circle" />
+              <p>Processando XML e aplicando regras fiscais…</p>
+            </div>
+          ) : (
+            <>
+              <Upload size={36} className="nfe-dropzone__icon" />
+              <p className="nfe-dropzone__title">Arraste o XML de NF-e aqui</p>
+              <p className="nfe-dropzone__sub">ou</p>
+              <label className="btn btn-secondary" style={{ cursor: 'pointer' }}>
+                Selecionar arquivo
+                <input type="file" accept=".xml" hidden onChange={onFileInput} />
+              </label>
+              <p className="nfe-dropzone__hint">Aceita NF-e padrão XML (nfeProc ou NFe)</p>
+            </>
+          )}
         </div>
       )}
 
-      {/* Tabela de notas */}
-      {notas.length > 0 && (
-        <div className="card nfe-result">
-          <div className="card-title" style={{ justifyContent: 'space-between' }}>
-            <span><CheckCircle size={16} /> {notas.length} nota(s) importada(s)</span>
+      {error && (
+        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+          <AlertCircle size={16} style={{ flexShrink: 0 }} />
+          {error}
+        </div>
+      )}
+
+      {/* Resultado */}
+      {data && stats && (
+        <>
+          {/* Barra de ações */}
+          <div className="card nfe-actionbar">
+            <div>
+              <strong>NF-e {data.nfeNumber}</strong>
+              <span className="nfe-dest"> — Destino: <b>{data.destUF || '?'}</b></span>
+            </div>
             <div style={{ display: 'flex', gap: '.5rem' }}>
               <button className="btn btn-primary btn-sm" onClick={exportar}>
                 <Download size={14} /> Exportar Excel
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={limparTudo}>
-                <Trash2 size={14} /> Limpar
+              <button className="btn btn-ghost btn-sm" onClick={limpar}>
+                <RotateCcw size={14} /> Nova NF-e
               </button>
             </div>
           </div>
 
-          <div className="nfe-table-wrap">
-            <table className="data-table nfe-table">
-              <thead>
-                <tr>
-                  <th>Número</th>
-                  <th>Data</th>
-                  <th>Emitente</th>
-                  <th>Destinatário</th>
-                  <th>Natureza</th>
-                  <th className="right">Vl. Total</th>
-                  <th className="right">ICMS</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {notas.map((n, i) => (
-                  <tr key={i}>
-                    <td className="mono">{n.nNF}/{n.serie}</td>
-                    <td>{n.dhEmi}</td>
-                    <td>
-                      <span className="nfe-name">{n.xNomeEmit}</span>
-                      <span className="nfe-uf">{n.ufEmit}</span>
-                    </td>
-                    <td>
-                      <span className="nfe-name">{n.xNomeDest}</span>
-                      <span className="nfe-uf">{n.ufDest}</span>
-                    </td>
-                    <td>{n.natOp}</td>
-                    <td className="right">{fmtBRL(n.vNF)}</td>
-                    <td className="right">{fmtBRL(n.vICMS)}</td>
-                    <td>
-                      <button className="btn-icon" onClick={() => remover(i)} title="Remover">
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* Stats */}
+          <div className="nfe-stats">
+            <div className="nfe-stat">
+              <span className="nfe-stat__val">{stats.total}</span>
+              <span className="nfe-stat__lbl">Total itens</span>
+            </div>
+            <div className="nfe-stat nfe-stat--st">
+              <span className="nfe-stat__val">{stats.st}</span>
+              <span className="nfe-stat__lbl">ICMS-ST (PA)</span>
+            </div>
+            <div className="nfe-stat nfe-stat--dif">
+              <span className="nfe-stat__val">{stats.dif}</span>
+              <span className="nfe-stat__lbl">DIFERENCIAL (PA)</span>
+            </div>
+            <div className="nfe-stat nfe-stat--difal">
+              <span className="nfe-stat__val">{stats.difal}</span>
+              <span className="nfe-stat__lbl">DIFAL (GO)</span>
+            </div>
+            <div className="nfe-stat nfe-stat--normal">
+              <span className="nfe-stat__val">{stats.normal}</span>
+              <span className="nfe-stat__lbl">NORMAL</span>
+            </div>
           </div>
-        </div>
-      )}
 
-      <div className="card nfe-info">
-        <div className="card-title">Campos exportados</div>
-        <div className="nfe-fields-grid">
-          {[
-            'Chave NF-e (44 dígitos)', 'Número e Série', 'Data de Emissão',
-            'CNPJ e Nome Emitente', 'UF Emitente', 'CNPJ/CPF e Nome Destinatário',
-            'UF Destinatário', 'Natureza da Operação', 'Finalidade',
-            'Qtd de Itens', 'Vl. Produtos', 'Vl. Frete', 'Vl. Desconto',
-            'Vl. IPI', 'Vl. ICMS', 'Vl. PIS', 'Vl. COFINS', 'Vl. Total NF',
-          ].map(f => (
-            <span key={f} className="nfe-field-tag">{f}</span>
-          ))}
-        </div>
-      </div>
+          {stats.warnings > 0 && (
+            <div className="alert alert-warn" style={{ marginBottom: '1rem' }}>
+              <AlertCircle size={16} style={{ flexShrink: 0 }} />
+              <span>
+                <b>{stats.warnings} iten(s)</b> processado(s) como NORMAL porque o NCM não
+                foi encontrado na base de regras ou a UF não tem regra cadastrada.
+              </span>
+            </div>
+          )}
+
+          {/* Tabela preview */}
+          <div className="card">
+            <div className="card-title">
+              <CheckCircle size={16} />
+              Itens da NF-e
+              {data.items.length > 15 && (
+                <span className="nfe-preview-note">
+                  Exibindo 15 de {data.items.length} — exporte para ver todos
+                </span>
+              )}
+            </div>
+            <div className="nfe-table-wrap">
+              <table className="data-table nfe-table">
+                <thead>
+                  <tr>
+                    <th>NCM</th>
+                    <th>Produto</th>
+                    <th className="right">vProd</th>
+                    <th className="right">ICMS XML</th>
+                    <th className="right">Base Cálc.</th>
+                    <th>Regra</th>
+                    <th className="right">ICMS Calc.</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.slice(0, 15).map((item, i) => {
+                    const rule = RULE_LABEL[item.ruleType] || RULE_LABEL['NORMAL']
+                    return (
+                      <tr key={i}>
+                        <td className="mono">{item.NCM}</td>
+                        <td className="nfe-xprod" title={item.xProd}>{item.xProd}</td>
+                        <td className="right">{fmtBRL(item.vProd)}</td>
+                        <td className="right">{fmtBRL(item.vICMSXml)}</td>
+                        <td className="right nfe-basecalc">{fmtBRL(item.baseCalculo)}</td>
+                        <td>
+                          <span className={`rule-badge ${rule.cls}`}>{rule.label}</span>
+                          {item.ruleType === 'ICMS-ST' && item.formulaParams.usedMva != null && (
+                            <span className="rule-mva">MVA {item.formulaParams.usedMva}%</span>
+                          )}
+                        </td>
+                        <td className="right"><b>{fmtBRL(item.calculatedICMS)}</b></td>
+                        <td>
+                          {item.warnings.length > 0
+                            ? <span className="nfe-warn" title={item.warnings.join(', ')}>
+                                <AlertCircle size={14} /> Aviso
+                              </span>
+                            : <span className="nfe-ok"><CheckCircle size={14} /> OK</span>
+                          }
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Info formulas */}
+          <div className="card nfe-info">
+            <div className="card-title"><Info size={16} /> Fórmulas aplicadas</div>
+            <div className="nfe-formula-grid">
+              <div className="nfe-formula nfe-formula--st">
+                <b>ICMS-ST (PA):</b> (vProd × (1 + MVA%)) × ALQ% − ICMS_XML
+              </div>
+              <div className="nfe-formula nfe-formula--dif">
+                <b>DIFERENCIAL (PA):</b> (vProd × ALQ%) − ICMS_XML
+              </div>
+              <div className="nfe-formula nfe-formula--difal">
+                <b>DIFAL (GO):</b> ((vProd − ICMS_XML) ÷ divisor) × ALQ% − ICMS_XML
+              </div>
+            </div>
+            <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginTop: '.75rem' }}>
+              O Excel exportado contém fórmulas reais referenciadas por célula (SpreadsheetML),
+              não apenas valores estáticos.
+            </p>
+          </div>
+        </>
+      )}
     </div>
   )
 }
