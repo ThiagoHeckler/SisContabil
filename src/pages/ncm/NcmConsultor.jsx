@@ -3,7 +3,7 @@ import {
   Search, PlusCircle, List, Calculator, Trash2,
   Download, Save, RotateCcw, AlertCircle, CheckCircle,
 } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import { downloadXls } from '../../lib/spreadsheet'
 import {
   getAllNcm, insertNcm, deleteNcm, searchNcm,
   getAllHistorico, insertHistorico, deleteHistorico, clearHistorico,
@@ -375,20 +375,10 @@ function CalculoStTab() {
   }
 
   function exportarExcel() {
-    const rows = visible.map(h => ({
-      'Nota':         h.nota,
-      'Base Item':    h.base,
-      'MVA %':        h.mva,
-      'ICMS (12%)':   h.icms,
-      'Base ST':      h.baseSt,
-      'ICMS ST (19%)':h.icmsSt,
-    }))
-    const ws = XLSX.utils.json_to_sheet(rows)
-    ws['!cols'] = [{ wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'ST Pará')
-    const hoje = new Date().toISOString().slice(0, 10)
-    XLSX.writeFile(wb, `Relatorio_ST_Para_${hoje}.xlsx`)
+    const headers = ['Nota', 'Base Item', 'MVA %', 'ICMS (12%)', 'Base ST', 'ICMS ST (19%)']
+    const rows    = visible.map(h => [h.nota, h.base, h.mva, h.icms, h.baseSt, h.icmsSt])
+    const hoje    = new Date().toISOString().slice(0, 10)
+    downloadXls(headers, rows, `Relatorio_ST_Para_${hoje}.xls`, 'ST Pará')
   }
 
   const visible = historico.filter(h =>
