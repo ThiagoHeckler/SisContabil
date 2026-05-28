@@ -2,12 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Search, PlusCircle, List, Calculator, Trash2,
   Download, Save, RotateCcw, AlertCircle, CheckCircle,
+  Globe, RefreshCw, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { downloadXls } from '../../lib/spreadsheet'
 import {
   getAllNcm, insertNcm, deleteNcm, searchNcm,
   getAllHistorico, insertHistorico, deleteHistorico, clearHistorico,
 } from './ncmStorage'
+import { useNcmBusca, useNcmSincronizacao } from '../../hooks/useNcmOficial'
 import './NcmConsultor.css'
 
 // ── helpers ────────────────────────────────────────────────────────
@@ -16,10 +18,11 @@ const fmtPct  = n => Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 
 const parsePt = s => parseFloat(String(s).replace(',', '.'))
 
 const TABS = [
-  { id: 'consulta',  icon: Search,     label: 'Consulta'    },
-  { id: 'cadastro',  icon: PlusCircle, label: 'Cadastro'    },
-  { id: 'listagem',  icon: List,       label: 'Listagem'    },
-  { id: 'calculo',   icon: Calculator, label: 'Cálculo ST'  },
+  { id: 'oficial',   icon: Globe,      label: 'Tabela Oficial' },
+  { id: 'consulta',  icon: Search,     label: 'Consulta Local' },
+  { id: 'cadastro',  icon: PlusCircle, label: 'Cadastro'       },
+  { id: 'listagem',  icon: List,       label: 'Listagem'       },
+  { id: 'calculo',   icon: Calculator, label: 'Cálculo ST'     },
 ]
 
 export default function NcmConsultor() {
@@ -45,10 +48,208 @@ export default function NcmConsultor() {
       </div>
 
       <div className="ncm-body">
+        {tab === 'oficial'  && <TabelaOficialTab />}
         {tab === 'consulta' && <ConsultaTab />}
         {tab === 'cadastro' && <CadastroTab onSaved={() => setTab('listagem')} />}
         {tab === 'listagem' && <ListagemTab />}
         {tab === 'calculo'  && <CalculoStTab />}
+      </div>
+    </div>
+  )
+}
+
+// ── Aba: Tabela Oficial (Siscomex via Laravel) ──────────────────────
+function TabelaOficialTab() {
+  const { resultados, paginacao, carregando, erro, buscar, limpar } = useNcmBusca()
+  const { status, sincronizando, resultado, erro: erroSync, carregarStatus, sincronizar } =
+    useNcmSincronizacao()
+
+  const [busca,   setBusca]   = useState('')
+  const [pagina,  setPagina]  = useState(1)
+  const [offline, setOffline] = useState(false)
+
+  useEffect(() => {
+    carregarStatus().catch(() => setOffline(true))
+  }, [carregarStatus])
+
+  function onBusca(e) {
+    const v = e.target.value
+    setBusca(v)
+    setPagina(1)
+    buscar(v, 1)
+  }
+
+  function irPagina(p) {
+    setPagina(p)
+    buscar(busca, p)
+  }
+
+  if (offline) {
+    return (
+      <div className="card">
+        <div className="card-title"><Globe size={16} /> Tabela Oficial NCM (Siscomex)</div>
+        <div className="alert alert-warn">
+          <AlertCircle size={15} style={{ flexShrink: 0 }} />
+          <div>
+            <strong>API Laravel não encontrada.</strong><br />
+            Inicie o servidor antes de usar esta aba:<br />
+            <code style={{ fontSize: '.8rem', background: '#fef3c7', padding: '.1rem .35rem', borderRadius: 4 }}>
+              cd siscontabil-api &amp;&amp; php artisan serve
+            </code>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {/* Status + Sincronização */}
+      <div className="card ncm-oficial-header">
+        <div className="ncm-status-row">
+          <div>
+            <Globe size={16} style={{ verticalAlign: 'middle', marginRight: '.35rem', color: 'var(--green)' }} />
+            <strong>Tabela Oficial NCM — Siscomex</strong>
+          </div>
+          <div className="ncm-status-chips">
+            {status ? (
+              <>
+                <span className={`badge ${status.sincronizado ? 'badge-green' : 'badge-yellow'}`}>
+                  {status.sincronizado
+                    ? `${Number(status.total).toLocaleString('pt-BR')} registros`
+                    : 'Não sincronizado'}
+                </span>
+                {status.vigencia && (
+                  <span className="badge badge-blue">{status.vigencia}</span>
+                )}
+              </>
+            ) : (
+              <span className="badge badge-gray">Carregando…</span>
+            )}
+          </div>
+        </div>
+
+        {!status?.sincronizado && (
+          <div className="alert alert-info" style={{ marginTop: '.75rem' }}>
+            <AlertCircle size={15} style={{ flexShrink: 0 }} />
+            Banco vazio. Clique em <strong>Sincronizar</strong> para baixar os ~11k NCMs da Receita Federal.
+          </div>
+        )}
+
+        {resultado && (
+          <div className="alert alert-success" style={{ marginTop: '.75rem' }}>
+            <CheckCircle size={15} style={{ flexShrink: 0 }} />
+            Sincronizado em {resultado.duracao_ms}ms ·{' '}
+            {Number(resultado.total).toLocaleString('pt-BR')} recebidos ·{' '}
+            {resultado.desativados} desativados · {resultado.vigencia}
+          </div>
+        )}
+
+        {erroSync && (
+          <div className="alert alert-error" style={{ marginTop: '.75rem' }}>
+            <AlertCircle size={15} style={{ flexShrink: 0 }} />
+            {erroSync}
+          </div>
+        )}
+
+        <button
+          className="btn btn-primary"
+          style={{ marginTop: '.85rem' }}
+          onClick={sincronizar}
+          disabled={sincronizando}
+        >
+          <RefreshCw size={15} className={sincronizando ? 'spin-icon' : ''} />
+          {sincronizando ? 'Sincronizando… (aguarde)' : 'Sincronizar com Siscomex'}
+        </button>
+      </div>
+
+      {/* Busca */}
+      <div className="card">
+        <div className="card-title"><Search size={16} /> Pesquisar NCM Oficial</div>
+        <div className="field">
+          <input
+            type="search"
+            placeholder="Código (ex: 0101.21) ou descrição (ex: cavalos)…"
+            value={busca}
+            onChange={onBusca}
+            disabled={!status?.sincronizado}
+          />
+          <span className="hint">
+            Mínimo 2 caracteres · busca por código e descrição
+          </span>
+        </div>
+
+        {carregando && (
+          <p style={{ color: 'var(--muted)', fontSize: '.9rem' }}>Buscando…</p>
+        )}
+
+        {erro && (
+          <div className="alert alert-error">
+            <AlertCircle size={15} style={{ flexShrink: 0 }} />
+            {erro}
+          </div>
+        )}
+
+        {resultados.length > 0 && (
+          <>
+            <div className="ncm-table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Descrição</th>
+                    <th>Vigência</th>
+                    <th>Ativo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resultados.map(ncm => (
+                    <tr key={ncm.id}>
+                      <td className="mono">{ncm.codigo}</td>
+                      <td>{ncm.descricao}</td>
+                      <td style={{ fontSize: '.8rem', color: 'var(--muted)' }}>{ncm.vigencia || '—'}</td>
+                      <td>
+                        {ncm.ativo
+                          ? <span className="badge badge-green">Vigente</span>
+                          : <span className="badge badge-gray">Revogado</span>
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {paginacao && paginacao.ultima > 1 && (
+              <div className="ncm-paginacao">
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={paginacao.atual <= 1}
+                  onClick={() => irPagina(paginacao.atual - 1)}
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <span style={{ fontSize: '.85rem', color: 'var(--muted)' }}>
+                  Página {paginacao.atual} de {paginacao.ultima}
+                  {' '}({Number(paginacao.total).toLocaleString('pt-BR')} resultados)
+                </span>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={paginacao.atual >= paginacao.ultima}
+                  onClick={() => irPagina(paginacao.atual + 1)}
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {!carregando && busca.length >= 2 && resultados.length === 0 && !erro && (
+          <p style={{ color: 'var(--muted)', fontSize: '.9rem' }}>
+            Nenhum NCM encontrado para "{busca}".
+          </p>
+        )}
       </div>
     </div>
   )

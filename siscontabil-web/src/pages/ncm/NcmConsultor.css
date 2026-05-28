@@ -50,6 +50,31 @@
 }
 .btn-icon-red:hover { color: #dc2626; background: #fef2f2; }
 
+/* ── Tabela Oficial ── */
+.ncm-oficial-header { padding-bottom: 1.25rem; }
+
+.ncm-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+.ncm-status-chips { display: flex; gap: .4rem; flex-wrap: wrap; }
+
+.ncm-paginacao {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .75rem;
+  margin-top: .75rem;
+}
+
+.spin-icon {
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* ── ST formula box ── */
 .st-formula-box {
   background: var(--green-bg);
