@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'siscomex' => [
+        // Verificação SSL do download NCM. Mantenha true (seguro).
+        // Defina SISCOMEX_VERIFY_SSL=false no .env apenas como fallback
+        // se não for possível configurar o cacert.pem no php.ini.
+        'verify_ssl' => env('SISCOMEX_VERIFY_SSL', true),
+    ],
+
 ];

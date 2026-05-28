@@ -21,8 +21,11 @@ class SiscomexNcmService
         Log::info('[NCM] Iniciando download da tabela NCM via Siscomex...');
 
         try {
+            $verificarSsl = config('services.siscomex.verify_ssl', true);
+
             $response = Http::timeout(120)
                 ->withUserAgent('SisContabil/1.0')
+                ->withOptions(['verify' => $verificarSsl])
                 ->acceptJson()
                 ->get(self::URL, ['perfil' => 'PUBLICO']);
 
