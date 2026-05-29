@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Search, PlusCircle, List, Calculator, Trash2,
   Download, Save, RotateCcw, AlertCircle, CheckCircle,
-  Globe, RefreshCw, ChevronLeft, ChevronRight,
+  Globe, RefreshCw, ChevronLeft, ChevronRight, Bookmark, X,
 } from 'lucide-react'
 import { downloadXls } from '../../lib/spreadsheet'
 import {
-  getAllNcm, insertNcm, deleteNcm, searchNcm,
+  getAllNcm, insertNcm, updateNcm, deleteNcm, searchNcm,
   getAllHistorico, insertHistorico, deleteHistorico, clearHistorico,
 } from './ncmStorage'
 import { useNcmBusca, useNcmSincronizacao } from '../../hooks/useNcmOficial'
@@ -60,28 +60,44 @@ export default function NcmConsultor() {
 
 // ── Aba: Tabela Oficial (Siscomex via Laravel) ──────────────────────
 function TabelaOficialTab() {
-  const { resultados, paginacao, carregando, erro, buscar, limpar } = useNcmBusca()
+  const { resultados, paginacao, carregando, erro, buscar } = useNcmBusca()
   const { status, sincronizando, resultado, erro: erroSync, carregarStatus, sincronizar } =
     useNcmSincronizacao()
 
-  const [busca,   setBusca]   = useState('')
-  const [pagina,  setPagina]  = useState(1)
-  const [offline, setOffline] = useState(false)
+  const [busca,      setBusca]      = useState('')
+  const [pagina,     setPagina]     = useState(1)
+  const [offline,    setOffline]    = useState(false)
+  const [dadosLocais, setDadosLocais] = useState({})
+  const [selecionado, setSelecionado] = useState(null)
 
   useEffect(() => {
     carregarStatus().catch(() => setOffline(true))
   }, [carregarStatus])
 
+  const carregarDadosLocais = useCallback(() => {
+    const map = {}
+    getAllNcm().forEach(n => { map[n.ncm] = n })
+    setDadosLocais(map)
+  }, [])
+
+  useEffect(() => { carregarDadosLocais() }, [carregarDadosLocais])
+
   function onBusca(e) {
     const v = e.target.value
     setBusca(v)
     setPagina(1)
+    setSelecionado(null)
     buscar(v, 1)
   }
 
   function irPagina(p) {
     setPagina(p)
+    setSelecionado(null)
     buscar(busca, p)
+  }
+
+  function toggleSelecionado(ncm) {
+    setSelecionado(prev => prev?.id === ncm.id ? null : ncm)
   }
 
   if (offline) {
@@ -175,7 +191,7 @@ function TabelaOficialTab() {
             disabled={!status?.sincronizado}
           />
           <span className="hint">
-            Mínimo 2 caracteres · busca por código e descrição
+            Mínimo 2 caracteres · busca por código e descrição · clique em <Bookmark size={12} style={{ verticalAlign: 'middle' }} /> para anotar dados fiscais
           </span>
         </div>
 
@@ -199,26 +215,50 @@ function TabelaOficialTab() {
                     <th>Código</th>
                     <th>Descrição</th>
                     <th>Vigência</th>
-                    <th>Ativo</th>
+                    <th>Status</th>
+                    <th style={{ width: 90, textAlign: 'center' }}>Dados Fiscais</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {resultados.map(ncm => (
-                    <tr key={ncm.id}>
-                      <td className="mono">{ncm.codigo}</td>
-                      <td>{ncm.descricao}</td>
-                      <td style={{ fontSize: '.8rem', color: 'var(--muted)' }}>{ncm.vigencia || '—'}</td>
-                      <td>
-                        {ncm.ativo
-                          ? <span className="badge badge-green">Vigente</span>
-                          : <span className="badge badge-gray">Revogado</span>
-                        }
-                      </td>
-                    </tr>
-                  ))}
+                  {resultados.map(ncm => {
+                    const temDados   = !!dadosLocais[ncm.codigo]
+                    const ativo      = selecionado?.id === ncm.id
+                    return (
+                      <tr key={ncm.id} className={ativo ? 'tr-selecionada' : ''}>
+                        <td className="mono">{ncm.codigo}</td>
+                        <td>{ncm.descricao}</td>
+                        <td style={{ fontSize: '.8rem', color: 'var(--muted)' }}>{ncm.vigencia || '—'}</td>
+                        <td>
+                          {ncm.ativo
+                            ? <span className="badge badge-green">Vigente</span>
+                            : <span className="badge badge-gray">Revogado</span>
+                          }
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            className={`btn-bookmark ${temDados ? 'btn-bookmark--ativo' : ''} ${ativo ? 'btn-bookmark--aberto' : ''}`}
+                            title={temDados ? 'Editar dados fiscais' : 'Anotar dados fiscais'}
+                            onClick={() => toggleSelecionado(ncm)}
+                          >
+                            <Bookmark size={15} />
+                            {temDados && <span className="bookmark-dot" />}
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
+
+            {selecionado && (
+              <AnotacaoFiscalPanel
+                ncmOficial={selecionado}
+                dadoExistente={dadosLocais[selecionado.codigo] ?? null}
+                onSalvar={() => { carregarDadosLocais(); setSelecionado(null) }}
+                onFechar={() => setSelecionado(null)}
+              />
+            )}
 
             {paginacao && paginacao.ultima > 1 && (
               <div className="ncm-paginacao">
@@ -250,6 +290,129 @@ function TabelaOficialTab() {
             Nenhum NCM encontrado para "{busca}".
           </p>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ── Painel de anotação fiscal (usado dentro da Tabela Oficial) ──────
+function AnotacaoFiscalPanel({ ncmOficial, dadoExistente, onSalvar, onFechar }) {
+  const EMPTY = {
+    nomeProduto:          ncmOficial?.descricao?.substring(0, 80) || '',
+    temMva:               false,
+    mvaValor:             '',
+    tributadoNormalmente: false,
+    resultadoEconect:     '',
+  }
+
+  const [form, setForm] = useState(dadoExistente ? {
+    nomeProduto:          dadoExistente.nomeProduto,
+    temMva:               dadoExistente.temMva,
+    mvaValor:             dadoExistente.mvaValor ?? '',
+    tributadoNormalmente: dadoExistente.tributadoNormalmente,
+    resultadoEconect:     dadoExistente.resultadoEconect || '',
+  } : EMPTY)
+
+  const [msg, setMsg] = useState(null)
+
+  function set(k, v) { setForm(f => ({ ...f, [k]: v })); setMsg(null) }
+
+  function salvar() {
+    if (!form.nomeProduto.trim()) {
+      setMsg({ type: 'error', text: 'Informe o nome/apelido do produto.' })
+      return
+    }
+    if (form.temMva) {
+      const v = parsePt(form.mvaValor)
+      if (isNaN(v) || v < 0) {
+        setMsg({ type: 'error', text: 'Valor de MVA inválido.' })
+        return
+      }
+    }
+    const entry = {
+      ncm:                  ncmOficial.codigo,
+      nomeProduto:          form.nomeProduto.trim(),
+      temMva:               form.temMva,
+      mvaValor:             form.temMva ? parsePt(form.mvaValor) : null,
+      tributadoNormalmente: form.tributadoNormalmente,
+      resultadoEconect:     form.resultadoEconect.trim(),
+    }
+    if (dadoExistente) {
+      updateNcm(dadoExistente.id, entry)
+    } else {
+      insertNcm(entry)
+    }
+    onSalvar()
+  }
+
+  return (
+    <div className="ncm-anotacao-panel">
+      <div className="ncm-anotacao-header">
+        <span>
+          <Bookmark size={14} style={{ color: 'var(--green)', verticalAlign: 'middle', marginRight: '.4rem', fill: 'var(--green)' }} />
+          Dados fiscais — <strong className="mono">{ncmOficial.codigo}</strong>
+          <span style={{ color: 'var(--muted)', fontWeight: 400, marginLeft: '.5rem', fontSize: '.82rem' }}>
+            {ncmOficial.descricao}
+          </span>
+        </span>
+        <button className="btn btn-ghost btn-sm" onClick={onFechar}>
+          <X size={14} />
+        </button>
+      </div>
+
+      <div className="field-row cols-2" style={{ marginTop: '.75rem' }}>
+        <div className="field">
+          <label>Nome / Apelido do Produto *</label>
+          <input type="text" placeholder="Como você identifica este produto"
+            value={form.nomeProduto} onChange={e => set('nomeProduto', e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Resultado Econect</label>
+          <input type="text" placeholder="Ex: ST, DIFAL, NORMAL, ISENTO…"
+            value={form.resultadoEconect} onChange={e => set('resultadoEconect', e.target.value)} />
+        </div>
+      </div>
+
+      <div className="field-row cols-2">
+        <div className="field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.temMva}
+              onChange={e => set('temMva', e.target.checked)} />
+            Tem MVA (Substituição Tributária)?
+          </label>
+          {form.temMva && (
+            <input type="text" placeholder="Ex: 30,37" value={form.mvaValor}
+              onChange={e => set('mvaValor', e.target.value)}
+              style={{ marginTop: '.5rem', maxWidth: 160 }} />
+          )}
+        </div>
+        <div className="field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.tributadoNormalmente}
+              onChange={e => set('tributadoNormalmente', e.target.checked)} />
+            Tributado Normalmente?
+          </label>
+        </div>
+      </div>
+
+      {msg && (
+        <div className={`alert alert-${msg.type === 'error' ? 'error' : 'success'}`}
+          style={{ marginBottom: '.75rem' }}>
+          {msg.type === 'error'
+            ? <AlertCircle size={15} style={{ flexShrink: 0 }} />
+            : <CheckCircle size={15} style={{ flexShrink: 0 }} />
+          }
+          {msg.text}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '.6rem' }}>
+        <button className="btn btn-primary btn-sm" onClick={salvar}>
+          <Save size={14} /> {dadoExistente ? 'Atualizar' : 'Salvar dados fiscais'}
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={onFechar}>
+          Cancelar
+        </button>
       </div>
     </div>
   )

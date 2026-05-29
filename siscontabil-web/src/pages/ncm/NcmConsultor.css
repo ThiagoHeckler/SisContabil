@@ -75,6 +75,61 @@
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Bookmark button (dados fiscais) ── */
+.btn-bookmark {
+  position: relative;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--muted);
+  padding: .25rem .4rem;
+  display: inline-flex;
+  align-items: center;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.btn-bookmark:hover { color: var(--green); border-color: var(--green); }
+.btn-bookmark--ativo { color: var(--green); border-color: var(--green); }
+.btn-bookmark--ativo svg { fill: var(--green); }
+.btn-bookmark--aberto { background: var(--green-bg); }
+
+.bookmark-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+}
+
+/* ── Linha selecionada na tabela oficial ── */
+.tr-selecionada td { background: var(--green-bg); }
+
+/* ── Painel de anotação fiscal ── */
+.ncm-anotacao-panel {
+  margin-top: 1rem;
+  border: 1.5px solid var(--green);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  background: var(--green-bg);
+  animation: slideDown .15s ease;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ncm-anotacao-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .5rem;
+  font-size: .88rem;
+  flex-wrap: wrap;
+  margin-bottom: .25rem;
+}
+
 /* ── ST formula box ── */
 .st-formula-box {
   background: var(--green-bg);
