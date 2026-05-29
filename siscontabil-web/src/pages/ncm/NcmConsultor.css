@@ -130,6 +130,77 @@
   margin-bottom: .25rem;
 }
 
+/* ── Grid de Estados (MVA / Antecipado) ── */
+.estados-grid {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: .85rem;
+}
+
+.estados-grid-head,
+.estados-grid-row {
+  display: grid;
+  grid-template-columns: 52px 1fr 1fr 1fr 1fr;
+  align-items: center;
+}
+
+.estados-grid-head {
+  background: var(--bg-alt, #f8f9fa);
+  border-bottom: 1px solid var(--border);
+  padding: .4rem .75rem;
+  font-weight: 600;
+  font-size: .78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  gap: .5rem;
+}
+
+.estados-grid-row {
+  padding: .5rem .75rem;
+  gap: .5rem;
+  border-bottom: 1px solid var(--border);
+}
+.estados-grid-row:last-child { border-bottom: none; }
+.estados-grid-row:hover { background: var(--bg-alt, #f8f9fa); }
+
+.uf-label {
+  font-weight: 700;
+  font-size: .8rem;
+  background: var(--green-bg);
+  color: var(--green);
+  border-radius: 4px;
+  padding: .15rem .4rem;
+  text-align: center;
+  display: inline-block;
+  letter-spacing: .04em;
+}
+
+.estados-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.estados-check input { cursor: pointer; width: 15px; height: 15px; }
+
+.input-sm {
+  width: 100%;
+  max-width: 110px;
+  padding: .3rem .5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: .83rem;
+  font-family: inherit;
+}
+.input-sm:disabled { background: var(--bg-alt, #f8f9fa); color: var(--muted); cursor: not-allowed; }
+.input-sm:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 2px var(--green-bg); }
+
+.estados-na { color: var(--muted); font-size: .8rem; text-align: center; }
+
+.estados-pa-note { font-size: .7rem; opacity: .7; font-weight: 400; }
+
 /* ── ST formula box ── */
 .st-formula-box {
   background: var(--green-bg);

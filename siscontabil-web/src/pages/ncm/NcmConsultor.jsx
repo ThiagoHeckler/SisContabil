@@ -17,6 +17,75 @@ const fmtBRL  = n => Number(n).toLocaleString('pt-BR', { style: 'currency', curr
 const fmtPct  = n => Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + '%'
 const parsePt = s => parseFloat(String(s).replace(',', '.'))
 
+// ── estados helpers ─────────────────────────────────────────────────
+const UFS = ['MT', 'PA', 'GO']
+
+function emptyEstados() {
+  return {
+    MT: { temMva: false, mvaValor: '' },
+    PA: { temMva: false, mvaValor: '', temAntecipado: false, aliquotaAntecipado: '' },
+    GO: { temMva: false, mvaValor: '' },
+  }
+}
+
+function estadosFromEntry(entry) {
+  if (entry?.estados) {
+    const mt = entry.estados.MT || {}
+    const pa = entry.estados.PA || {}
+    const go = entry.estados.GO || {}
+    return {
+      MT: { temMva: mt.temMva ?? false, mvaValor: mt.mvaValor ?? '' },
+      PA: {
+        temMva:              pa.temMva ?? false,
+        mvaValor:            pa.mvaValor ?? '',
+        temAntecipado:       pa.temAntecipado ?? false,
+        aliquotaAntecipado:  pa.aliquotaAntecipado ?? '',
+      },
+      GO: { temMva: go.temMva ?? false, mvaValor: go.mvaValor ?? '' },
+    }
+  }
+  return emptyEstados()
+}
+
+function parseEstados(estados) {
+  const result = {}
+  for (const uf of UFS) {
+    const e = estados[uf]
+    const mvaValor = e.temMva ? parsePt(e.mvaValor) : null
+    if (e.temMva && (isNaN(mvaValor) || mvaValor < 0))
+      throw new Error(`MVA inválido para ${uf}`)
+    result[uf] = { temMva: e.temMva, mvaValor }
+    if (uf === 'PA') {
+      const aq = e.temAntecipado ? parsePt(e.aliquotaAntecipado) : null
+      if (e.temAntecipado && (isNaN(aq) || aq < 0))
+        throw new Error('Alíquota antecipado inválida para PA')
+      result[uf].temAntecipado       = e.temAntecipado
+      result[uf].aliquotaAntecipado  = aq
+    }
+  }
+  return result
+}
+
+function temQualquerMva(entry) {
+  if (entry.estados) return UFS.some(uf => entry.estados[uf]?.temMva)
+  return entry.temMva
+}
+
+function renderEstadosBadges(entry) {
+  if (!entry.estados) {
+    if (entry.temMva) return [{ key: 'legacy', label: `MVA: ${fmtPct(entry.mvaValor ?? 0)}`, cor: 'badge-yellow' }]
+    return []
+  }
+  const badges = []
+  UFS.forEach(uf => {
+    const e = entry.estados[uf]
+    if (e?.temMva) badges.push({ key: `${uf}-mva`, label: `${uf} ${fmtPct(e.mvaValor ?? 0)}`, cor: 'badge-yellow' })
+    if (uf === 'PA' && e?.temAntecipado)
+      badges.push({ key: 'pa-ant', label: `PA Antec. ${fmtPct(e.aliquotaAntecipado ?? 0)}`, cor: 'badge-blue' })
+  })
+  return badges
+}
+
 const TABS = [
   { id: 'oficial',   icon: Globe,      label: 'Tabela Oficial' },
   { id: 'consulta',  icon: Search,     label: 'Consulta Local' },
@@ -297,22 +366,12 @@ function TabelaOficialTab() {
 
 // ── Painel de anotação fiscal (usado dentro da Tabela Oficial) ──────
 function AnotacaoFiscalPanel({ ncmOficial, dadoExistente, onSalvar, onFechar }) {
-  const EMPTY = {
-    nomeProduto:          ncmOficial?.descricao?.substring(0, 80) || '',
-    temMva:               false,
-    mvaValor:             '',
-    tributadoNormalmente: false,
-    resultadoEconect:     '',
-  }
-
-  const [form, setForm] = useState(dadoExistente ? {
-    nomeProduto:          dadoExistente.nomeProduto,
-    temMva:               dadoExistente.temMva,
-    mvaValor:             dadoExistente.mvaValor ?? '',
-    tributadoNormalmente: dadoExistente.tributadoNormalmente,
-    resultadoEconect:     dadoExistente.resultadoEconect || '',
-  } : EMPTY)
-
+  const [form, setForm] = useState({
+    nomeProduto:          dadoExistente?.nomeProduto ?? ncmOficial?.descricao?.substring(0, 80) ?? '',
+    tributadoNormalmente: dadoExistente?.tributadoNormalmente ?? false,
+    resultadoEconect:     dadoExistente?.resultadoEconect ?? '',
+    estados:              estadosFromEntry(dadoExistente),
+  })
   const [msg, setMsg] = useState(null)
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); setMsg(null) }
@@ -322,26 +381,18 @@ function AnotacaoFiscalPanel({ ncmOficial, dadoExistente, onSalvar, onFechar }) 
       setMsg({ type: 'error', text: 'Informe o nome/apelido do produto.' })
       return
     }
-    if (form.temMva) {
-      const v = parsePt(form.mvaValor)
-      if (isNaN(v) || v < 0) {
-        setMsg({ type: 'error', text: 'Valor de MVA inválido.' })
-        return
-      }
-    }
+    let estadosParsed
+    try { estadosParsed = parseEstados(form.estados) }
+    catch (e) { setMsg({ type: 'error', text: e.message }); return }
+
     const entry = {
       ncm:                  ncmOficial.codigo,
       nomeProduto:          form.nomeProduto.trim(),
-      temMva:               form.temMva,
-      mvaValor:             form.temMva ? parsePt(form.mvaValor) : null,
       tributadoNormalmente: form.tributadoNormalmente,
       resultadoEconect:     form.resultadoEconect.trim(),
+      estados:              estadosParsed,
     }
-    if (dadoExistente) {
-      updateNcm(dadoExistente.id, entry)
-    } else {
-      insertNcm(entry)
-    }
+    dadoExistente ? updateNcm(dadoExistente.id, entry) : insertNcm(entry)
     onSalvar()
   }
 
@@ -355,9 +406,7 @@ function AnotacaoFiscalPanel({ ncmOficial, dadoExistente, onSalvar, onFechar }) 
             {ncmOficial.descricao}
           </span>
         </span>
-        <button className="btn btn-ghost btn-sm" onClick={onFechar}>
-          <X size={14} />
-        </button>
+        <button className="btn btn-ghost btn-sm" onClick={onFechar}><X size={14} /></button>
       </div>
 
       <div className="field-row cols-2" style={{ marginTop: '.75rem' }}>
@@ -373,26 +422,18 @@ function AnotacaoFiscalPanel({ ncmOficial, dadoExistente, onSalvar, onFechar }) 
         </div>
       </div>
 
-      <div className="field-row cols-2">
-        <div className="field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer' }}>
-            <input type="checkbox" checked={form.temMva}
-              onChange={e => set('temMva', e.target.checked)} />
-            Tem MVA (Substituição Tributária)?
-          </label>
-          {form.temMva && (
-            <input type="text" placeholder="Ex: 30,37" value={form.mvaValor}
-              onChange={e => set('mvaValor', e.target.value)}
-              style={{ marginTop: '.5rem', maxWidth: 160 }} />
-          )}
-        </div>
-        <div className="field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer' }}>
-            <input type="checkbox" checked={form.tributadoNormalmente}
-              onChange={e => set('tributadoNormalmente', e.target.checked)} />
-            Tributado Normalmente?
-          </label>
-        </div>
+      <div className="field" style={{ marginBottom: '.75rem' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.tributadoNormalmente}
+            onChange={e => set('tributadoNormalmente', e.target.checked)} />
+          Tributado Normalmente?
+        </label>
+      </div>
+
+      <div className="field">
+        <label>ST / MVA e Antecipação por Estado</label>
+        <EstadosGrid estados={form.estados}
+          onChange={v => { setForm(f => ({ ...f, estados: v })); setMsg(null) }} />
       </div>
 
       {msg && (
@@ -400,8 +441,7 @@ function AnotacaoFiscalPanel({ ncmOficial, dadoExistente, onSalvar, onFechar }) 
           style={{ marginBottom: '.75rem' }}>
           {msg.type === 'error'
             ? <AlertCircle size={15} style={{ flexShrink: 0 }} />
-            : <CheckCircle size={15} style={{ flexShrink: 0 }} />
-          }
+            : <CheckCircle size={15} style={{ flexShrink: 0 }} />}
           {msg.text}
         </div>
       )}
@@ -410,9 +450,7 @@ function AnotacaoFiscalPanel({ ncmOficial, dadoExistente, onSalvar, onFechar }) 
         <button className="btn btn-primary btn-sm" onClick={salvar}>
           <Save size={14} /> {dadoExistente ? 'Atualizar' : 'Salvar dados fiscais'}
         </button>
-        <button className="btn btn-ghost btn-sm" onClick={onFechar}>
-          Cancelar
-        </button>
+        <button className="btn btn-ghost btn-sm" onClick={onFechar}>Cancelar</button>
       </div>
     </div>
   )
@@ -466,23 +504,34 @@ function ConsultaTab() {
               <tr>
                 <th>NCM</th>
                 <th>Nome do Produto</th>
-                <th>Tem MVA</th>
-                <th>MVA %</th>
+                <th>ST / MVA por Estado</th>
                 <th>Econect</th>
                 <th>Trib. Normal</th>
               </tr>
             </thead>
             <tbody>
-              {results.map(r => (
-                <tr key={r.id}>
-                  <td className="mono">{r.ncm}</td>
-                  <td>{r.nomeProduto}</td>
-                  <td>{r.temMva ? <span className="badge badge-green">Sim</span> : <span className="badge badge-gray">Não</span>}</td>
-                  <td>{r.temMva && r.mvaValor != null ? fmtPct(r.mvaValor) : '—'}</td>
-                  <td>{r.resultadoEconect || '—'}</td>
-                  <td>{r.tributadoNormalmente ? <span className="badge badge-blue">Sim</span> : <span className="badge badge-gray">Não</span>}</td>
-                </tr>
-              ))}
+              {results.map(r => {
+                const badges = renderEstadosBadges(r)
+                return (
+                  <tr key={r.id}>
+                    <td className="mono">{r.ncm}</td>
+                    <td>{r.nomeProduto}</td>
+                    <td>
+                      {badges.length > 0
+                        ? <div style={{ display: 'flex', gap: '.3rem', flexWrap: 'wrap' }}>
+                            {badges.map(b => <span key={b.key} className={`badge ${b.cor}`}>{b.label}</span>)}
+                          </div>
+                        : <span className="badge badge-gray">—</span>
+                      }
+                    </td>
+                    <td>{r.resultadoEconect || '—'}</td>
+                    <td>{r.tributadoNormalmente
+                      ? <span className="badge badge-blue">Sim</span>
+                      : <span className="badge badge-gray">Não</span>}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -492,13 +541,12 @@ function ConsultaTab() {
 }
 
 // ── Aba: Cadastro ───────────────────────────────────────────────────
-const EMPTY_FORM = {
-  ncm: '', nomeProduto: '', temMva: false, mvaValor: '',
-  tributadoNormalmente: false, resultadoEconect: '',
+function emptyForm() {
+  return { ncm: '', nomeProduto: '', tributadoNormalmente: false, resultadoEconect: '', estados: emptyEstados() }
 }
 
 function CadastroTab({ onSaved }) {
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [form, setForm] = useState(emptyForm)
   const [msg,  setMsg]  = useState(null)
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); setMsg(null) }
@@ -508,24 +556,19 @@ function CadastroTab({ onSaved }) {
       setMsg({ type: 'error', text: 'NCM e Nome do Produto são obrigatórios.' })
       return
     }
-    if (form.temMva) {
-      const v = parsePt(form.mvaValor)
-      if (isNaN(v) || v < 0) {
-        setMsg({ type: 'error', text: 'Valor de MVA inválido.' })
-        return
-      }
-    }
-    const entry = {
-      ncm:                 form.ncm.trim(),
-      nomeProduto:         form.nomeProduto.trim(),
-      temMva:              form.temMva,
-      mvaValor:            form.temMva ? parsePt(form.mvaValor) : null,
-      tributadoNormalmente:form.tributadoNormalmente,
-      resultadoEconect:    form.resultadoEconect.trim(),
-    }
-    insertNcm(entry)
+    let estadosParsed
+    try { estadosParsed = parseEstados(form.estados) }
+    catch (e) { setMsg({ type: 'error', text: e.message }); return }
+
+    insertNcm({
+      ncm:                  form.ncm.trim(),
+      nomeProduto:          form.nomeProduto.trim(),
+      tributadoNormalmente: form.tributadoNormalmente,
+      resultadoEconect:     form.resultadoEconect.trim(),
+      estados:              estadosParsed,
+    })
     setMsg({ type: 'success', text: 'NCM cadastrada com sucesso!' })
-    setForm(EMPTY_FORM)
+    setForm(emptyForm())
   }
 
   return (
@@ -547,16 +590,10 @@ function CadastroTab({ onSaved }) {
 
       <div className="field-row cols-2">
         <div className="field">
-          <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer' }}>
-            <input type="checkbox" checked={form.temMva}
-              onChange={e => set('temMva', e.target.checked)} />
-            Tem MVA?
-          </label>
-          {form.temMva && (
-            <input type="text" placeholder="Ex: 30,37" value={form.mvaValor}
-              onChange={e => set('mvaValor', e.target.value)}
-              style={{ marginTop: '.5rem' }} />
-          )}
+          <label>Resultado Econect</label>
+          <input type="text" placeholder="Ex: ST, DIFAL, NORMAL…"
+            value={form.resultadoEconect}
+            onChange={e => set('resultadoEconect', e.target.value)} />
         </div>
         <div className="field">
           <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer' }}>
@@ -568,10 +605,9 @@ function CadastroTab({ onSaved }) {
       </div>
 
       <div className="field">
-        <label>Resultado Econect</label>
-        <input type="text" placeholder="Ex: ST, DIFAL, NORMAL…"
-          value={form.resultadoEconect}
-          onChange={e => set('resultadoEconect', e.target.value)} />
+        <label>ST / MVA e Antecipação por Estado</label>
+        <EstadosGrid estados={form.estados}
+          onChange={v => { setForm(f => ({ ...f, estados: v })); setMsg(null) }} />
       </div>
 
       {msg && (
@@ -579,8 +615,7 @@ function CadastroTab({ onSaved }) {
           style={{ marginBottom: '1rem' }}>
           {msg.type === 'error'
             ? <AlertCircle size={15} style={{ flexShrink: 0 }} />
-            : <CheckCircle size={15} style={{ flexShrink: 0 }} />
-          }
+            : <CheckCircle size={15} style={{ flexShrink: 0 }} />}
           {msg.text}
         </div>
       )}
@@ -589,7 +624,7 @@ function CadastroTab({ onSaved }) {
         <button className="btn btn-primary" onClick={salvar}>
           <Save size={15} /> Salvar NCM
         </button>
-        <button className="btn btn-ghost" onClick={() => { setForm(EMPTY_FORM); setMsg(null) }}>
+        <button className="btn btn-ghost" onClick={() => { setForm(emptyForm()); setMsg(null) }}>
           <RotateCcw size={15} /> Limpar
         </button>
       </div>
@@ -609,7 +644,7 @@ function ListagemTab() {
   const visible = data.filter(x => {
     const t = search.toLowerCase()
     const matchSearch = !t || x.ncm.toLowerCase().includes(t) || x.nomeProduto.toLowerCase().includes(t)
-    const matchMva = filter === 'Todos' ? true : filter === 'Com MVA' ? x.temMva : !x.temMva
+    const matchMva = filter === 'Todos' ? true : filter === 'Com MVA' ? temQualquerMva(x) : !temQualquerMva(x)
     return matchSearch && matchMva
   })
 
@@ -652,39 +687,101 @@ function ListagemTab() {
               <tr>
                 <th>NCM</th>
                 <th>Nome</th>
-                <th>MVA</th>
-                <th>Trib. Normal</th>
+                <th>ST / MVA por Estado</th>
                 <th>Econect</th>
+                <th>Trib. Normal</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {visible.map(r => (
-                <tr key={r.id}>
-                  <td className="mono">{r.ncm}</td>
-                  <td>{r.nomeProduto}</td>
-                  <td>
-                    {r.temMva
-                      ? <span className="badge badge-yellow">{fmtPct(r.mvaValor ?? 0)}</span>
-                      : <span className="badge badge-gray">—</span>
-                    }
-                  </td>
-                  <td>{r.tributadoNormalmente
-                    ? <span className="badge badge-blue">Sim</span>
-                    : <span className="badge badge-gray">Não</span>
-                  }</td>
-                  <td>{r.resultadoEconect || '—'}</td>
-                  <td>
-                    <button className="btn-icon-red" onClick={() => excluir(r.id)} title="Excluir">
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {visible.map(r => {
+                const badges = renderEstadosBadges(r)
+                return (
+                  <tr key={r.id}>
+                    <td className="mono">{r.ncm}</td>
+                    <td>{r.nomeProduto}</td>
+                    <td>
+                      {badges.length > 0
+                        ? <div style={{ display: 'flex', gap: '.3rem', flexWrap: 'wrap' }}>
+                            {badges.map(b => <span key={b.key} className={`badge ${b.cor}`}>{b.label}</span>)}
+                          </div>
+                        : <span className="badge badge-gray">—</span>
+                      }
+                    </td>
+                    <td>{r.resultadoEconect || '—'}</td>
+                    <td>{r.tributadoNormalmente
+                      ? <span className="badge badge-blue">Sim</span>
+                      : <span className="badge badge-gray">Não</span>}
+                    </td>
+                    <td>
+                      <button className="btn-icon-red" onClick={() => excluir(r.id)} title="Excluir">
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Componente: grid de MVA/antecipação por estado ──────────────────
+function EstadosGrid({ estados, onChange }) {
+  function set(uf, campo, valor) {
+    onChange({ ...estados, [uf]: { ...estados[uf], [campo]: valor } })
+  }
+
+  return (
+    <div className="estados-grid">
+      <div className="estados-grid-head">
+        <span>UF</span>
+        <span>Tem ST / MVA?</span>
+        <span>MVA %</span>
+        <span>Antecipado? <span className="estados-pa-note">(PA)</span></span>
+        <span>Alíq. Antecip. %</span>
+      </div>
+      {UFS.map(uf => (
+        <div key={uf} className="estados-grid-row">
+          <span className="uf-label">{uf}</span>
+          <label className="estados-check">
+            <input type="checkbox" checked={estados[uf].temMva}
+              onChange={e => set(uf, 'temMva', e.target.checked)} />
+          </label>
+          <input
+            type="text"
+            className="input-sm"
+            placeholder="Ex: 30,37"
+            disabled={!estados[uf].temMva}
+            value={estados[uf].mvaValor}
+            onChange={e => set(uf, 'mvaValor', e.target.value)}
+          />
+          {uf === 'PA' ? (
+            <>
+              <label className="estados-check">
+                <input type="checkbox" checked={estados.PA.temAntecipado}
+                  onChange={e => set('PA', 'temAntecipado', e.target.checked)} />
+              </label>
+              <input
+                type="text"
+                className="input-sm"
+                placeholder="Ex: 15,00"
+                disabled={!estados.PA.temAntecipado}
+                value={estados.PA.aliquotaAntecipado}
+                onChange={e => set('PA', 'aliquotaAntecipado', e.target.value)}
+              />
+            </>
+          ) : (
+            <>
+              <span className="estados-na">—</span>
+              <span className="estados-na">—</span>
+            </>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
