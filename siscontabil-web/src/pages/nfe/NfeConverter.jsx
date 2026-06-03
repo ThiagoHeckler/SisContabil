@@ -10,11 +10,18 @@ import './NfeConverter.css'
 const fmtBRL = n =>
   Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-const RULE_LABEL = {
-  'ICMS-ST':     { label: 'ICMS-ST',     cls: 'rule-st' },
-  'DIFERENCIAL': { label: 'DIFERENCIAL', cls: 'rule-dif' },
-  'DIFAL':       { label: 'DIFAL',       cls: 'rule-difal' },
-  'NORMAL':      { label: 'NORMAL',      cls: 'rule-normal' },
+function getRuleDisplay(ruleType, destUF) {
+  if (destUF === 'GO') {
+    if (ruleType === 'DIFERENCIAL') return { label: 'DIFAL',   cls: 'rule-difal' }
+    if (ruleType === 'ICMS-ST')     return { label: 'NORMAL',  cls: 'rule-normal' }
+  }
+  const MAP = {
+    'ICMS-ST':     { label: 'ICMS-ST',     cls: 'rule-st' },
+    'DIFERENCIAL': { label: 'DIFERENCIAL', cls: 'rule-dif' },
+    'DIFAL':       { label: 'DIFAL',       cls: 'rule-difal' },
+    'NORMAL':      { label: 'NORMAL',      cls: 'rule-normal' },
+  }
+  return MAP[ruleType] || MAP['NORMAL']
 }
 
 export default function NfeConverter() {
@@ -62,7 +69,7 @@ export default function NfeConverter() {
 
   function exportar() {
     if (!data) return
-    const xml = generateExcel(data.items, data.nfeNumber)
+    const xml = generateExcel(data.items, data.nfeNumber, data.destUF)
     const blob = new Blob([xml], { type: 'application/vnd.ms-excel' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
@@ -157,15 +164,15 @@ export default function NfeConverter() {
             </div>
             <div className="nfe-stat nfe-stat--st">
               <span className="nfe-stat__val">{stats.st}</span>
-              <span className="nfe-stat__lbl">ICMS-ST (PA)</span>
+              <span className="nfe-stat__lbl">{data.destUF === 'GO' ? 'NORMAL' : 'ICMS-ST'}</span>
             </div>
             <div className="nfe-stat nfe-stat--dif">
               <span className="nfe-stat__val">{stats.dif}</span>
-              <span className="nfe-stat__lbl">DIFERENCIAL (PA)</span>
+              <span className="nfe-stat__lbl">{data.destUF === 'GO' ? 'DIFAL' : 'DIFERENCIAL'}</span>
             </div>
             <div className="nfe-stat nfe-stat--difal">
               <span className="nfe-stat__val">{stats.difal}</span>
-              <span className="nfe-stat__lbl">DIFAL (GO)</span>
+              <span className="nfe-stat__lbl">DIFAL</span>
             </div>
             <div className="nfe-stat nfe-stat--normal">
               <span className="nfe-stat__val">{stats.normal}</span>
@@ -198,21 +205,23 @@ export default function NfeConverter() {
               <table className="data-table nfe-table">
                 <thead>
                   <tr>
+                    <th className="center">#</th>
                     <th>NCM</th>
                     <th>Produto</th>
                     <th className="right">vProd</th>
                     <th className="right">ICMS XML</th>
                     <th className="right">Base Cálc.</th>
-                    <th>Regra</th>
-                    <th className="right">ICMS Calc.</th>
+                    <th>Regra_Tipo</th>
+                    <th className="right">ICMS_Calculado</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.items.slice(0, 15).map((item, i) => {
-                    const rule = RULE_LABEL[item.ruleType] || RULE_LABEL['NORMAL']
+                    const rule = getRuleDisplay(item.ruleType, data.destUF)
                     return (
                       <tr key={i}>
+                        <td className="center mono nfe-num">{i + 1}</td>
                         <td className="mono">{item.NCM}</td>
                         <td className="nfe-xprod" title={item.xProd}>{item.xProd}</td>
                         <td className="right">{fmtBRL(item.vProd)}</td>
@@ -220,7 +229,7 @@ export default function NfeConverter() {
                         <td className="right nfe-basecalc">{fmtBRL(item.baseCalculo)}</td>
                         <td>
                           <span className={`rule-badge ${rule.cls}`}>{rule.label}</span>
-                          {item.ruleType === 'ICMS-ST' && item.formulaParams.usedMva != null && (
+                          {item.ruleType === 'ICMS-ST' && data.destUF !== 'GO' && item.formulaParams.usedMva != null && (
                             <span className="rule-mva">MVA {item.formulaParams.usedMva}%</span>
                           )}
                         </td>

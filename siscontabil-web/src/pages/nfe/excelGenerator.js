@@ -1,5 +1,6 @@
 /**
- * Porta do ExcelGenerator.js original — SpreadsheetML com fórmulas reais.
+ * SpreadsheetML com fórmulas reais — layout alinhado com planilha de referência.
+ * Colunas: NUMERO | NCM | UF | Produto | vProd | ICMS_XML | Base de Cálculo | Regra_Tipo | ICMS_Calculado
  */
 
 function escapeXml(str) {
@@ -9,9 +10,28 @@ function escapeXml(str) {
   }[c]))
 }
 
-export function generateExcel(items, nfeNumber) {
+// Para GO: DIFERENCIAL vira DIFAL, ICMS-ST vira NORMAL
+function displayRule(ruleType, destUF) {
+  if (destUF === 'GO') {
+    if (ruleType === 'DIFERENCIAL') return 'DIFAL'
+    if (ruleType === 'ICMS-ST')     return 'NORMAL'
+  }
+  return ruleType
+}
+
+function styleForRule(ruleType, destUF) {
+  const display = displayRule(ruleType, destUF)
+  if (display === 'ICMS-ST')     return 'sRuleST'
+  if (display === 'DIFERENCIAL') return 'sRuleDIFERENCIAL'
+  if (display === 'DIFAL')       return 'sRuleDIFAL'
+  return 'sRuleNORMAL'
+}
+
+export function generateExcel(items, nfeNumber, destUF) {
   const ts = new Date().toISOString()
 
+  // Layout das 9 colunas:
+  // 1=NUMERO  2=NCM  3=UF  4=Produto  5=vProd  6=ICMS_XML  7=Base_Calc  8=Regra_Tipo  9=ICMS_Calculado
   let xml = `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
@@ -32,6 +52,9 @@ export function generateExcel(items, nfeNumber) {
    <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/>
    <Interior ss:Color="#1a7a4a" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="sNum">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom"/>
   </Style>
   <Style ss:ID="sCurrency"><NumberFormat ss:Format="Currency"/></Style>
   <Style ss:ID="sBaseCalc">
@@ -54,26 +77,29 @@ export function generateExcel(items, nfeNumber) {
    <Interior ss:Color="#F3F4F6" ss:Pattern="Solid"/>
    <NumberFormat ss:Format="Currency"/>
   </Style>
-  <Style ss:ID="sWarn"><Font ss:Color="#B91C1C"/></Style>
   <Style ss:ID="sTotal">
    <Font ss:Bold="1"/>
    <Borders><Border ss:Position="Top" ss:LineStyle="Double" ss:Weight="3"/></Borders>
    <NumberFormat ss:Format="Currency"/>
   </Style>
+  <Style ss:ID="sTotalLabel">
+   <Font ss:Bold="1"/>
+   <Borders><Border ss:Position="Top" ss:LineStyle="Double" ss:Weight="3"/></Borders>
+  </Style>
  </Styles>
  <Worksheet ss:Name="NF-e ${escapeXml(nfeNumber || 'Itens')}">
-  <Table ss:ExpandedColumnCount="10" x:FullColumns="1" x:FullRows="1" ss:DefaultRowHeight="15">
+  <Table ss:ExpandedColumnCount="9" x:FullColumns="1" x:FullRows="1" ss:DefaultRowHeight="15">
+   <Column ss:Width="45"/>
    <Column ss:Width="80"/>
-   <Column ss:Width="40"/>
-   <Column ss:Width="200"/>
-   <Column ss:Width="90"/>
-   <Column ss:Width="90"/>
-   <Column ss:Width="100"/>
-   <Column ss:Width="100"/>
-   <Column ss:Width="260"/>
-   <Column ss:Width="100"/>
-   <Column ss:Width="200"/>
+   <Column ss:Width="35"/>
+   <Column ss:Width="210"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="105"/>
    <Row ss:Height="20">
+    <Cell ss:StyleID="sHeader"><Data ss:Type="String">NUMERO</Data></Cell>
     <Cell ss:StyleID="sHeader"><Data ss:Type="String">NCM</Data></Cell>
     <Cell ss:StyleID="sHeader"><Data ss:Type="String">UF</Data></Cell>
     <Cell ss:StyleID="sHeader"><Data ss:Type="String">Produto</Data></Cell>
@@ -81,17 +107,16 @@ export function generateExcel(items, nfeNumber) {
     <Cell ss:StyleID="sHeader"><Data ss:Type="String">ICMS_XML</Data></Cell>
     <Cell ss:StyleID="sHeader"><Data ss:Type="String">Base de Cálculo</Data></Cell>
     <Cell ss:StyleID="sHeader"><Data ss:Type="String">Regra_Tipo</Data></Cell>
-    <Cell ss:StyleID="sHeader"><Data ss:Type="String">Cálculo_Detalhado</Data></Cell>
     <Cell ss:StyleID="sHeader"><Data ss:Type="String">ICMS_Calculado</Data></Cell>
-    <Cell ss:StyleID="sHeader"><Data ss:Type="String">Observação</Data></Cell>
    </Row>`
 
-  items.forEach(item => {
-    let styleId = 'sRuleNORMAL'
-    if (item.ruleType === 'ICMS-ST')      styleId = 'sRuleST'
-    else if (item.ruleType === 'DIFERENCIAL') styleId = 'sRuleDIFERENCIAL'
-    else if (item.ruleType === 'DIFAL')   styleId = 'sRuleDIFAL'
+  items.forEach((item, idx) => {
+    const styleId = styleForRule(item.ruleType, destUF)
+    const label   = displayRule(item.ruleType, destUF)
 
+    // Base de Cálculo — coluna 7, offsets relativos:
+    //   RC[-2] = col 5 = vProd
+    //   RC[-1] = col 6 = ICMS_XML
     let baseCalcFormula
     if (item.ruleType === 'ICMS-ST') {
       const mva = item.formulaParams.usedMva || 0
@@ -103,42 +128,43 @@ export function generateExcel(items, nfeNumber) {
       baseCalcFormula = `=RC[-2]`
     }
 
+    // ICMS_Calculado — coluna 9, offsets relativos:
+    //   RC[-2] = col 7 = Base de Cálculo
+    //   RC[-3] = col 6 = ICMS_XML
     let icmsFormula
     if (item.ruleType === 'ICMS-ST') {
       const rate = item.formulaParams.rate || 0
-      icmsFormula = `=(RC[-3]*${rate}/100)-RC[-4]`
+      icmsFormula = `=(RC[-2]*${rate}/100)-RC[-3]`
     } else if (item.ruleType === 'DIFERENCIAL') {
       const rate = item.formulaParams.rate || 0
-      icmsFormula = `=(RC[-3]*${rate}/100)-RC[-4]`
+      icmsFormula = `=(RC[-2]*${rate}/100)-RC[-3]`
     } else if (item.ruleType === 'DIFAL') {
       const rate = item.formulaParams.internalRate || 0
-      icmsFormula = `=(RC[-3]*${rate}/100)-RC[-4]`
+      icmsFormula = `=(RC[-2]*${rate}/100)-RC[-3]`
     } else {
       icmsFormula = '0'
     }
 
-    const warn = (item.warnings || []).join('; ')
-
     xml += `
    <Row>
+    <Cell ss:StyleID="sNum"><Data ss:Type="Number">${idx + 1}</Data></Cell>
     <Cell ss:StyleID="${styleId}"><Data ss:Type="String">${escapeXml(item.NCM)}</Data></Cell>
     <Cell ss:StyleID="${styleId}"><Data ss:Type="String">${escapeXml(item.destUF)}</Data></Cell>
     <Cell ss:StyleID="${styleId}"><Data ss:Type="String">${escapeXml(item.xProd)}</Data></Cell>
     <Cell ss:StyleID="${styleId}"><Data ss:Type="Number">${item.vProd}</Data></Cell>
     <Cell ss:StyleID="${styleId}"><Data ss:Type="Number">${item.vICMSXml}</Data></Cell>
     <Cell ss:StyleID="sBaseCalc" ss:Formula="${baseCalcFormula}"><Data ss:Type="Number">${item.baseCalculo}</Data></Cell>
-    <Cell ss:StyleID="${styleId}"><Data ss:Type="String">${escapeXml(item.ruleType)}</Data></Cell>
-    <Cell ss:StyleID="${styleId}"><Data ss:Type="String">${escapeXml(item.formulaDesc)}</Data></Cell>
+    <Cell ss:StyleID="${styleId}"><Data ss:Type="String">${escapeXml(label)}</Data></Cell>
     <Cell ss:StyleID="${styleId}" ss:Formula="${icmsFormula}"><Data ss:Type="Number">${item.calculatedICMS}</Data></Cell>
-    <Cell ss:StyleID="${warn ? 'sWarn' : styleId}"><Data ss:Type="String">${escapeXml(warn)}</Data></Cell>
    </Row>`
   })
 
+  // Linha de totais: TOTAIS na col 4 (Produto), SUM nas cols 5, 6, 7, pula 8, SUM col 9
   const n = items.length
   if (n > 0) {
     xml += `
    <Row>
-    <Cell ss:Index="3" ss:StyleID="sTotal"><Data ss:Type="String">TOTAIS:</Data></Cell>
+    <Cell ss:Index="4" ss:StyleID="sTotalLabel"><Data ss:Type="String">TOTAIS:</Data></Cell>
     <Cell ss:StyleID="sTotal" ss:Formula="=SUM(R[-${n}]C:R[-1]C)"><Data ss:Type="Number">0</Data></Cell>
     <Cell ss:StyleID="sTotal" ss:Formula="=SUM(R[-${n}]C:R[-1]C)"><Data ss:Type="Number">0</Data></Cell>
     <Cell ss:StyleID="sTotal" ss:Formula="=SUM(R[-${n}]C:R[-1]C)"><Data ss:Type="Number">0</Data></Cell>

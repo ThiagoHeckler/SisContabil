@@ -84,6 +84,9 @@
 /* Table */
 .nfe-table-wrap { overflow-x: auto; }
 
+.center { text-align: center; }
+.nfe-num { color: var(--muted); font-size: .8rem; width: 32px; }
+
 .nfe-xprod {
   max-width: 180px;
   white-space: nowrap;
