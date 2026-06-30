@@ -51,13 +51,12 @@
 /* Stats */
 .nfe-stats {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: .75rem;
   margin-bottom: 1rem;
 }
 @media (max-width: 640px) {
   .nfe-stats { grid-template-columns: repeat(2, 1fr); }
-  .nfe-stats .nfe-stat:first-child { grid-column: 1 / -1; }
 }
 
 .nfe-stat {
@@ -80,6 +79,8 @@
 .nfe-stat--difal .nfe-stat__val { color: #c2410c; }
 .nfe-stat--normal { background: #f9fafb; }
 .nfe-stat--normal .nfe-stat__val { color: #374151; }
+.nfe-stat--stpago { background: #ede9fe; }
+.nfe-stat--stpago .nfe-stat__val { color: #6b21a8; }
 
 /* Table */
 .nfe-table-wrap { overflow-x: auto; }
@@ -106,6 +107,7 @@
 .rule-dif    { background: #dcfce7; color: #166534; }
 .rule-difal  { background: #ffedd5; color: #9a3412; }
 .rule-normal { background: #f3f4f6; color: #374151; }
+.rule-stpago { background: #ede9fe; color: #6b21a8; }
 
 .rule-mva {
   display: block;

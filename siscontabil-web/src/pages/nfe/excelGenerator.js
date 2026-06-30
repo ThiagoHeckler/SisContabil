@@ -12,6 +12,7 @@ function escapeXml(str) {
 
 // Para GO: DIFERENCIAL vira DIFAL, ICMS-ST vira NORMAL
 function displayRule(ruleType, destUF) {
+  if (ruleType === 'ICMS-ST-PAGO') return 'ICMS ST PAGO'   // prioridade — independe da UF
   if (destUF === 'GO') {
     if (ruleType === 'DIFERENCIAL') return 'DIFAL'
     if (ruleType === 'ICMS-ST')     return 'NORMAL'
@@ -20,6 +21,7 @@ function displayRule(ruleType, destUF) {
 }
 
 function styleForRule(ruleType, destUF) {
+  if (ruleType === 'ICMS-ST-PAGO') return 'sRuleSTPago'
   const display = displayRule(ruleType, destUF)
   if (display === 'ICMS-ST')     return 'sRuleST'
   if (display === 'DIFERENCIAL') return 'sRuleDIFERENCIAL'
@@ -77,6 +79,11 @@ export function generateExcel(items, nfeNumber, destUF) {
    <Interior ss:Color="#F3F4F6" ss:Pattern="Solid"/>
    <NumberFormat ss:Format="Currency"/>
   </Style>
+  <Style ss:ID="sRuleSTPago">
+   <Font ss:Color="#6B21A8" ss:Bold="1"/>
+   <Interior ss:Color="#EDE9FE" ss:Pattern="Solid"/>
+   <NumberFormat ss:Format="Currency"/>
+  </Style>
   <Style ss:ID="sTotal">
    <Font ss:Bold="1"/>
    <Borders><Border ss:Position="Top" ss:LineStyle="Double" ss:Weight="3"/></Borders>
@@ -113,6 +120,7 @@ export function generateExcel(items, nfeNumber, destUF) {
   items.forEach((item, idx) => {
     const styleId = styleForRule(item.ruleType, destUF)
     const label   = displayRule(item.ruleType, destUF)
+    const stPago  = item.ruleType === 'ICMS-ST-PAGO'
 
     // Base de Cálculo — coluna 7, offsets relativos:
     //   RC[-2] = col 5 = vProd
@@ -145,6 +153,14 @@ export function generateExcel(items, nfeNumber, destUF) {
       icmsFormula = '0'
     }
 
+    // ICMS-ST já pago: sem fórmula, Base e ICMS fixos em 0.
+    const baseCalcCell = stPago
+      ? `<Cell ss:StyleID="${styleId}"><Data ss:Type="Number">0</Data></Cell>`
+      : `<Cell ss:StyleID="sBaseCalc" ss:Formula="${baseCalcFormula}"><Data ss:Type="Number">${item.baseCalculo}</Data></Cell>`
+    const icmsCell = stPago
+      ? `<Cell ss:StyleID="${styleId}"><Data ss:Type="Number">0</Data></Cell>`
+      : `<Cell ss:StyleID="${styleId}" ss:Formula="${icmsFormula}"><Data ss:Type="Number">${item.calculatedICMS}</Data></Cell>`
+
     xml += `
    <Row>
     <Cell ss:StyleID="sNum"><Data ss:Type="Number">${idx + 1}</Data></Cell>
@@ -153,9 +169,9 @@ export function generateExcel(items, nfeNumber, destUF) {
     <Cell ss:StyleID="${styleId}"><Data ss:Type="String">${escapeXml(item.xProd)}</Data></Cell>
     <Cell ss:StyleID="${styleId}"><Data ss:Type="Number">${item.vProd}</Data></Cell>
     <Cell ss:StyleID="${styleId}"><Data ss:Type="Number">${item.vICMSXml}</Data></Cell>
-    <Cell ss:StyleID="sBaseCalc" ss:Formula="${baseCalcFormula}"><Data ss:Type="Number">${item.baseCalculo}</Data></Cell>
+    ${baseCalcCell}
     <Cell ss:StyleID="${styleId}"><Data ss:Type="String">${escapeXml(label)}</Data></Cell>
-    <Cell ss:StyleID="${styleId}" ss:Formula="${icmsFormula}"><Data ss:Type="Number">${item.calculatedICMS}</Data></Cell>
+    ${icmsCell}
    </Row>`
   })
 

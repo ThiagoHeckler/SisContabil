@@ -129,6 +129,7 @@ export function parseNfe(xmlString) {
 
     let vICMSXml = 0
     let pMVASTXml = 0
+    let vICMSSTXml = 0
 
     const icmsGroups = [
       'ICMS00','ICMS10','ICMS20','ICMS30','ICMS40','ICMS51',
@@ -144,6 +145,8 @@ export function parseNfe(xmlString) {
           if (v) vICMSXml = parseFloat(v)
           const m = getNodeValue(g, 'pMVAST')
           if (m) pMVASTXml = parseFloat(m)
+          const st = getNodeValue(g, 'vICMSST')
+          if (st) vICMSSTXml = parseFloat(st)
           break
         }
       }
@@ -152,10 +155,20 @@ export function parseNfe(xmlString) {
     const itemData = {
       nItem: node.getAttribute('nItem'),
       xProd: getNodeValue(prod, 'xProd'),
-      NCM, vProd, vICMSXml, pMVASTXml,
+      NCM, vProd, vICMSXml, pMVASTXml, vICMSSTXml,
     }
 
-    const ruleResult = applyFiscalRules(NCM, destUF, vProd, vICMSXml, pMVASTXml)
+    // Produto com ICMS-ST já destacado/pago na nota: não calcula nada.
+    const ruleResult = vICMSSTXml > 0
+      ? {
+          ruleType:       'ICMS-ST-PAGO',
+          calculatedICMS: 0,
+          baseCalculo:    0,
+          warnings:       [],
+          formulaParams:  {},
+          formulaDesc:    'ICMS-ST destacado/pago na nota — sem cálculo',
+        }
+      : applyFiscalRules(NCM, destUF, vProd, vICMSXml, pMVASTXml)
 
     items.push({ ...itemData, ...ruleResult, destUF })
   })

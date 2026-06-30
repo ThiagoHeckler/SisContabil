@@ -11,6 +11,7 @@ const fmtBRL = n =>
   Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 function getRuleDisplay(ruleType, destUF) {
+  if (ruleType === 'ICMS-ST-PAGO') return { label: 'ICMS ST PAGO', cls: 'rule-stpago' }
   if (destUF === 'GO') {
     if (ruleType === 'DIFERENCIAL') return { label: 'DIFAL',   cls: 'rule-difal' }
     if (ruleType === 'ICMS-ST')     return { label: 'NORMAL',  cls: 'rule-normal' }
@@ -81,9 +82,10 @@ export default function NfeConverter() {
 
   const stats = useMemo(() => {
     if (!data) return null
-    const s = { total: data.items.length, st: 0, dif: 0, difal: 0, normal: 0, warnings: 0 }
+    const s = { total: data.items.length, st: 0, dif: 0, difal: 0, normal: 0, stPago: 0, warnings: 0 }
     data.items.forEach(i => {
-      if (i.ruleType === 'ICMS-ST')      s.st++
+      if (i.ruleType === 'ICMS-ST-PAGO') s.stPago++
+      else if (i.ruleType === 'ICMS-ST')      s.st++
       else if (i.ruleType === 'DIFERENCIAL') s.dif++
       else if (i.ruleType === 'DIFAL')   s.difal++
       else s.normal++
@@ -178,6 +180,12 @@ export default function NfeConverter() {
               <span className="nfe-stat__val">{stats.normal}</span>
               <span className="nfe-stat__lbl">NORMAL</span>
             </div>
+            {stats.stPago > 0 && (
+              <div className="nfe-stat nfe-stat--stpago">
+                <span className="nfe-stat__val">{stats.stPago}</span>
+                <span className="nfe-stat__lbl">ICMS ST PAGO</span>
+              </div>
+            )}
           </div>
 
           {stats.warnings > 0 && (
