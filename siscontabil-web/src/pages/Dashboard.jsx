@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Calculator, FileSpreadsheet, Search, ArrowRight } from 'lucide-react'
+import { Calculator, FileSpreadsheet, Search, Percent, ArrowRight } from 'lucide-react'
 import './Dashboard.css'
 
 const MODULES = [
@@ -26,6 +26,14 @@ const MODULES = [
     bg: '#f5f3ff',
     title: 'Consultor NCM',
     desc: 'Pesquise códigos NCM por número ou descrição e veja alíquotas e enquadramento fiscal.',
+  },
+  {
+    to: '/pis-cofins',
+    icon: Percent,
+    color: '#b45309',
+    bg: '#fffbeb',
+    title: 'Ajuste de PIS e COFINS',
+    desc: 'Importe uma planilha de itens (código, NCM, descrição) e identifique os enquadramentos de alíquota zero por NCM.',
   },
 ]
 

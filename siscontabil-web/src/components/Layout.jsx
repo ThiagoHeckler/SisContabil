@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard, Calculator, FileSpreadsheet, Search, Menu, X, BookOpen
+  LayoutDashboard, Calculator, FileSpreadsheet, Search, Menu, X, BookOpen, Percent
 } from 'lucide-react'
 import './Layout.css'
 
 const NAV = [
-  { to: '/',     icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/difal',icon: Calculator,      label: 'Calc. DIFAL' },
-  { to: '/nfe',  icon: FileSpreadsheet, label: 'Conversor NF-e' },
-  { to: '/ncm',  icon: Search,          label: 'Consultor NCM' },
+  { to: '/',          icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/difal',     icon: Calculator,      label: 'Calc. DIFAL' },
+  { to: '/nfe',       icon: FileSpreadsheet, label: 'Conversor NF-e' },
+  { to: '/ncm',       icon: Search,          label: 'Consultor NCM' },
+  { to: '/pis-cofins',icon: Percent,         label: 'PIS/COFINS' },
 ]
 
 export default function Layout({ children }) {
