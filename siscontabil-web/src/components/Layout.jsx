@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Calculator, FileSpreadsheet, Search, Menu, X, BookOpen, Percent,
-  LogOut, User as UserIcon
+  LogOut, User as UserIcon, FileCheck2
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import './Layout.css'
@@ -13,6 +13,7 @@ const NAV = [
   { to: '/nfe',       icon: FileSpreadsheet, label: 'Conversor NF-e' },
   { to: '/ncm',       icon: Search,          label: 'Consultor NCM' },
   { to: '/pis-cofins',icon: Percent,         label: 'PIS/COFINS' },
+  { to: '/sped',      icon: FileCheck2,      label: 'Importação SPED' },
 ]
 
 export default function Layout({ children }) {

@@ -7,6 +7,7 @@ import DifalCalculator from './pages/difal/DifalCalculator'
 import NfeConverter from './pages/nfe/NfeConverter'
 import NcmConsultor from './pages/ncm/NcmConsultor'
 import PisCofinsAjuste from './pages/pis-cofins/PisCofinsAjuste'
+import SpedImport from './pages/sped/SpedImport'
 
 function TelaCarregando() {
   return (
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/nfe" element={<NfeConverter />} />
         <Route path="/ncm" element={<NcmConsultor />} />
         <Route path="/pis-cofins" element={<PisCofinsAjuste />} />
+        <Route path="/sped" element={<SpedImport />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
