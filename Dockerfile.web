@@ -2,12 +2,20 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
+# URL da API embutida no build (Vite lê de arquivo .env.production).
+# Padrão relativo (/api): o navegador chama a mesma origem em que o site é
+# servido (ex.: http://192.168.1.75:8080/api) e o nginx encaminha para o
+# Laravel. Funciona de qualquer máquina da rede, sem IP fixo e sem CORS.
+# Pode ser sobrescrito via build arg (--build-arg VITE_API_URL=...).
+ARG VITE_API_URL=/api
+
 # Instala dependências
 COPY siscontabil-web/package*.json ./
 RUN npm install
 
 # Copia o código e builda
 COPY siscontabil-web/ .
+RUN echo "VITE_API_URL=$VITE_API_URL" > .env.production
 RUN npm run build
 
 # Serve o build com nginx

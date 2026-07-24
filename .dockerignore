@@ -1,0 +1,15 @@
+# Dependências e artefatos — reinstalados/reconstruídos dentro da imagem
+**/node_modules
+**/vendor
+siscontabil-web/dist
+
+# Arquivos de ambiente locais não devem vazar para a imagem.
+# O VITE_API_URL de produção é escrito no Dockerfile.web (ARG).
+**/.env
+**/.env.*
+!**/.env.example
+
+# Git e afins
+.git
+.gitignore
+**/.DS_Store
