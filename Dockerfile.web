@@ -1,0 +1,18 @@
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+# Instala dependências
+COPY siscontabil-web/package*.json ./
+RUN npm install
+
+# Copia o código e builda
+COPY siscontabil-web/ .
+RUN npm run build
+
+# Serve o build com nginx
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx/web.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80

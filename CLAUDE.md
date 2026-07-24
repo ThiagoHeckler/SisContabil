@@ -44,6 +44,113 @@ The web app expects the API at `http://localhost:8000/api` by default (see `src/
 
 CORS (`siscontabil-api/config/cors.php`) is hardcoded to allow `localhost:5173`/`4173`/`3000` for `api/*` — update this if the dev port changes.
 
+---
+
+## Production Deploy (Docker on Ubuntu Server VM)
+
+The system is deployed on a **Ubuntu Server VM (VirtualBox)** inside a Windows Server environment, accessible on the local network at `http://192.168.1.75:8080`.
+
+### Docker stack (docker-compose.yml at repo root)
+- `siscontabil_api` — PHP 8.4-fpm (Laravel API)
+- `siscontabil_web` — Node 20 Alpine build → nginx:alpine (React SPA)
+- `siscontabil_mysql` — MySQL 8.4 (replaces SQLite in production)
+- `siscontabil_nginx` — nginx:alpine reverse proxy on port 8080
+
+### Environment in production
+The API container receives env vars directly from `docker-compose.yml` (no `.env` file in the container):
+```
+DB_CONNECTION=mysql
+DB_HOST=mysql
+DB_PORT=3306
+DB_DATABASE=siscontabil
+DB_USERNAME=siscontabil
+DB_PASSWORD=siscontabil@2025
+```
+
+### Deploying changes
+After committing to GitHub, on the VM:
+```bash
+cd ~/SisContabil
+git pull
+docker compose up -d --build
+```
+
+### CORS in production
+`siscontabil-api/config/cors.php` must allow `http://192.168.1.75:8080` in addition to localhost origins.
+
+---
+
+## Current State & What Needs To Be Done Next
+
+### What exists today
+- Full Docker deploy working on `192.168.1.75:8080`
+- 15,156 official NCM records migrated from SQLite → MySQL
+- All user data (custom NCM fiscal rules, PIS/COFINS rules) still lives in **browser localStorage** — this is a known limitation
+- **No authentication system** — the app is fully open, no login required
+
+### What needs to be implemented (in order)
+
+#### 1. Authentication (Laravel Sanctum + React login screen)
+Laravel Sanctum is already installed (`laravel/sanctum ^4.0` in `composer.json`). Implement:
+
+**Backend (`siscontabil-api/`):**
+- `POST /api/auth/login` — accepts email + password, returns Sanctum token
+- `POST /api/auth/logout` — revokes token
+- `GET /api/auth/me` — returns authenticated user data
+- Seed at least one admin user (`php artisan db:seed`)
+- Protect all future data endpoints with `auth:sanctum` middleware
+- Keep NCM read endpoints (`GET /api/ncm`) public — they're read-only official data
+
+**Frontend (`siscontabil-web/`):**
+- Login page (`/login`) with email + password form
+- Store Sanctum token in `localStorage` (key: `siscontabil_token`)
+- `Authorization: Bearer {token}` header on all authenticated API calls
+- Redirect to `/login` if token is missing or expired (401 response)
+- Logout button in the sidebar (`Layout.jsx`)
+
+#### 2. Migrate localStorage data → MySQL (shared across all users)
+
+**Context:** The accounting team shares rules — all users see the same PIS/COFINS and NCM fiscal data. There is no per-user data isolation needed for these registries.
+
+**Data currently in localStorage (to be migrated to MySQL):**
+
+**`siscontabil_pis_cofins_regras`** (key in `pisCofinsStorage.js`):
+```json
+[
+  {
+    "ncm": "02013000",
+    "descricaoProduto": "CARNE BOVINA",
+    "codigoEnquadramento": "...",
+    "tabela": "...",
+    "lei": "..."
+  }
+]
+```
+→ Create table `pis_cofins_regras` in MySQL, CRUD endpoints at `/api/pis-cofins-regras`, protect with `auth:sanctum`.
+
+**`siscontabil_ncm_database`** (key in `ncmStorage.js`):
+Custom user annotations over official NCM codes — MVA %, ST antecipação by state, fiscal notes.
+→ Create table `ncm_fiscal` in MySQL, CRUD endpoints at `/api/ncm-fiscal`, protect with `auth:sanctum`.
+
+**Migration strategy for existing localStorage data:**
+- Add a one-time "Importar dados locais" button in the UI
+- It reads localStorage, POSTs to the new API endpoints, then clears localStorage
+- Show confirmation before clearing
+
+**Frontend changes:**
+- Replace all `localStorage.getItem/setItem` calls in `ncmStorage.js` and `pisCofinsStorage.js` with `fetch` calls to the new API endpoints
+- Keep the same data shape — just change the persistence layer
+- Handle loading/error states (API calls are async, localStorage is sync)
+
+### What NOT to change
+- The DIFAL Calculator — pure client-side computation, no persistence needed
+- The NF-e Converter — processes XML files locally, no persistence needed
+- The Cálculo ST tab — stateless calculator, no persistence needed
+- The official NCM sync pipeline (`ncm:sincronizar`, `SiscomexNcmService`) — working correctly
+- The `xlsx` (SheetJS) CDN pin — do not change this
+
+---
+
 ## Architecture
 
 ### API: NCM sync pipeline
