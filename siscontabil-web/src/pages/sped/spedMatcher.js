@@ -41,21 +41,31 @@ export function conferir(arquivos, chavesText) {
   const invalidas = [...new Set(todas.filter(k => k.length !== 44))]
   const pedidas   = new Set(todas.filter(k => k.length === 44))
 
-  const conferidos     = []  // arquivo cuja chave está na lista pedida
+  const conferidos     = []  // 1 arquivo por chave pedida (sem repetir)
+  const duplicados     = []  // XMLs extras com uma chave já conferida
   const naoSolicitados = []  // arquivo com chave válida, mas fora da lista
   const semChave       = []  // arquivo sem chave legível
   const usadas         = new Set()
 
   for (const a of arquivos) {
     if (!a.chave) { semChave.push(a); continue }
-    if (pedidas.has(a.chave)) { conferidos.push(a); usadas.add(a.chave) }
-    else naoSolicitados.push(a)
+    if (pedidas.has(a.chave)) {
+      if (usadas.has(a.chave)) {
+        duplicados.push(a)          // mesma chave já entrou — não repete no ZIP
+      } else {
+        conferidos.push(a)
+        usadas.add(a.chave)
+      }
+    } else {
+      naoSolicitados.push(a)
+    }
   }
 
   const naoEncontradas = [...pedidas].filter(k => !usadas.has(k))
 
   return {
     conferidos,
+    duplicados,       // XMLs repetidos da mesma chave (descartados do ZIP)
     naoSolicitados,
     semChave,
     naoEncontradas,   // chaves pedidas sem XML correspondente

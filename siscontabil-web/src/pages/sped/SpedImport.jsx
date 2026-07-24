@@ -203,7 +203,7 @@ export default function SpedImport() {
 
 // ── Resultado da conferência ─────────────────────────────────────────
 function Resultado({ resultado, onBaixar }) {
-  const { conferidos, naoSolicitados, semChave, naoEncontradas, invalidas, totalPedidas } = resultado
+  const { conferidos, duplicados, naoSolicitados, semChave, naoEncontradas, invalidas, totalPedidas } = resultado
 
   return (
     <div style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -244,6 +244,14 @@ function Resultado({ resultado, onBaixar }) {
         </div>
       )}
 
+      {duplicados.length > 0 && (
+        <div className="alert alert-info">
+          <AlertCircle size={15} style={{ flexShrink: 0 }} />
+          {duplicados.length} XML(s) duplicado(s) da mesma chave foram descartados — cada nota
+          entra no ZIP uma única vez.
+        </div>
+      )}
+
       {/* Conferidos */}
       <div className="card">
         <div className="card-title"><CheckCircle size={16} /> XMLs conferidos ({conferidos.length})</div>
@@ -276,6 +284,29 @@ function Resultado({ resultado, onBaixar }) {
               <tbody>
                 {naoEncontradas.map(k => (
                   <tr key={k}><td className="mono sped-chave-cell">{k}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicados descartados */}
+      {duplicados.length > 0 && (
+        <div className="card">
+          <div className="card-title"><FileWarning size={16} /> XMLs duplicados descartados ({duplicados.length})</div>
+          <p className="sped-empty" style={{ marginBottom: '.5rem' }}>
+            Já havia um XML para estas chaves; os arquivos abaixo não foram incluídos no ZIP:
+          </p>
+          <div className="sped-table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Arquivo</th><th>Chave de acesso</th></tr></thead>
+              <tbody>
+                {duplicados.map(a => (
+                  <tr key={a.name}>
+                    <td className="mono">{a.name}</td>
+                    <td className="mono sped-chave-cell">{a.chave}</td>
+                  </tr>
                 ))}
               </tbody>
             </table>
