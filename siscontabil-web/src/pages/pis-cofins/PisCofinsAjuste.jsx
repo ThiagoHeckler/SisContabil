@@ -1,12 +1,13 @@
 import { useState, useCallback, useEffect } from 'react'
 import {
   Percent, Upload, Download, RotateCcw, CheckCircle, AlertCircle,
-  ListChecks, PlusCircle, Trash2, Pencil, X,
+  ListChecks, PlusCircle, Trash2, Pencil, X, DatabaseBackup,
 } from 'lucide-react'
 import { lerTabelaXlsx, processarTabela, exportarResultado } from './pisCofinsParser'
 import {
   insertRegra, updateRegra, deleteRegra,
   searchRegras, buildRegrasMap, normalizeNcm8,
+  getLegacyRegras, importLegacyRegras,
 } from './pisCofinsStorage'
 import './PisCofinsAjuste.css'
 
@@ -62,7 +63,7 @@ function ProcessarTab() {
     setData(null)
     try {
       const { headers, rows } = await lerTabelaXlsx(file)
-      const regrasMap = buildRegrasMap()
+      const regrasMap = await buildRegrasMap()
       const { rows: processadas, stats } = processarTabela(rows, regrasMap)
       setData({ headers, rows: processadas, stats, nomeArquivo: file.name })
     } catch (err) {
@@ -229,18 +230,31 @@ function emptyForm() {
 }
 
 function CadastroTab() {
-  const [lista,      setLista]      = useState([])
-  const [search,     setSearch]     = useState('')
-  const [form,        setForm]      = useState(emptyForm)
-  const [editingId,   setEditingId] = useState(null)
-  const [msg,         setMsg]       = useState(null)
+  const [lista,       setLista]      = useState([])
+  const [search,      setSearch]     = useState('')
+  const [form,        setForm]       = useState(emptyForm)
+  const [editingId,   setEditingId]  = useState(null)
+  const [msg,         setMsg]        = useState(null)
+  const [carregando,  setCarregando] = useState(true)
+  const [salvando,    setSalvando]   = useState(false)
+  const [legado,      setLegado]     = useState(getLegacyRegras().length)
+  const [importando,  setImportando] = useState(false)
 
-  const load = useCallback(() => setLista(searchRegras(search)), [search])
+  const load = useCallback(async () => {
+    setCarregando(true)
+    try {
+      setLista(await searchRegras(search))
+    } catch (e) {
+      setMsg({ type: 'error', text: e.message })
+    } finally {
+      setCarregando(false)
+    }
+  }, [search])
   useEffect(() => { load() }, [load])
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); setMsg(null) }
 
-  function salvar() {
+  async function salvar() {
     const ncm8 = normalizeNcm8(form.ncm)
     if (!ncm8 || ncm8.length < 8) { setMsg({ type: 'error', text: 'Informe um NCM válido (8 dígitos).' }); return }
     if (!form.codigoEnquadramento.trim()) { setMsg({ type: 'error', text: 'Informe o código de enquadramento.' }); return }
@@ -255,16 +269,23 @@ function CadastroTab() {
       lei:                  form.lei.trim(),
     }
 
-    if (editingId) {
-      updateRegra(editingId, entry)
-      setMsg({ type: 'success', text: 'NCM atualizado com sucesso!' })
-    } else {
-      insertRegra(entry)
-      setMsg({ type: 'success', text: 'NCM cadastrado com sucesso!' })
+    setSalvando(true)
+    try {
+      if (editingId) {
+        await updateRegra(editingId, entry)
+        setMsg({ type: 'success', text: 'NCM atualizado com sucesso!' })
+      } else {
+        await insertRegra(entry)
+        setMsg({ type: 'success', text: 'NCM cadastrado com sucesso!' })
+      }
+      setForm(emptyForm())
+      setEditingId(null)
+      await load()
+    } catch (e) {
+      setMsg({ type: 'error', text: e.message })
+    } finally {
+      setSalvando(false)
     }
-    setForm(emptyForm())
-    setEditingId(null)
-    load()
   }
 
   function editar(r) {
@@ -285,15 +306,47 @@ function CadastroTab() {
     setMsg(null)
   }
 
-  function excluir(id) {
+  async function excluir(id) {
     if (!confirm('Excluir este cadastro?')) return
-    deleteRegra(id)
-    if (editingId === id) cancelarEdicao()
-    load()
+    try {
+      await deleteRegra(id)
+      if (editingId === id) cancelarEdicao()
+      await load()
+    } catch (e) {
+      setMsg({ type: 'error', text: e.message })
+    }
+  }
+
+  async function importarLocais() {
+    if (!confirm(`Importar ${legado} registro(s) do navegador para o servidor? Os dados locais serão removidos após a importação.`)) return
+    setImportando(true)
+    try {
+      const res = await importLegacyRegras()
+      setLegado(0)
+      setMsg({ type: 'success', text: `${res.importados} registro(s) importado(s) com sucesso!` })
+      await load()
+    } catch (e) {
+      setMsg({ type: 'error', text: e.message })
+    } finally {
+      setImportando(false)
+    }
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {legado > 0 && (
+        <div className="alert alert-info pc-import-banner">
+          <DatabaseBackup size={18} style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <strong>{legado} registro(s)</strong> encontrado(s) no armazenamento local deste navegador.
+            Importe-os para o servidor (MySQL) para compartilhar com toda a equipe.
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={importarLocais} disabled={importando}>
+            <DatabaseBackup size={14} /> {importando ? 'Importando…' : 'Importar dados locais'}
+          </button>
+        </div>
+      )}
+
       <div className="card">
         <div className="card-title">
           {editingId ? <Pencil size={16} /> : <PlusCircle size={16} />}
@@ -342,8 +395,8 @@ function CadastroTab() {
         )}
 
         <div style={{ display: 'flex', gap: '.75rem' }}>
-          <button className="btn btn-primary" onClick={salvar}>
-            <PlusCircle size={15} /> {editingId ? 'Salvar alterações' : 'Cadastrar'}
+          <button className="btn btn-primary" onClick={salvar} disabled={salvando}>
+            <PlusCircle size={15} /> {salvando ? 'Salvando…' : (editingId ? 'Salvar alterações' : 'Cadastrar')}
           </button>
           {editingId && (
             <button className="btn btn-ghost" onClick={cancelarEdicao}>
@@ -364,7 +417,9 @@ function CadastroTab() {
             value={search} onChange={e => setSearch(e.target.value)} />
         </div>
 
-        {lista.length === 0 ? (
+        {carregando ? (
+          <p style={{ color: 'var(--muted)', fontSize: '.9rem' }}>Carregando…</p>
+        ) : lista.length === 0 ? (
           <div className="alert alert-info">
             <AlertCircle size={15} style={{ flexShrink: 0 }} />
             Nenhum NCM cadastrado ainda.

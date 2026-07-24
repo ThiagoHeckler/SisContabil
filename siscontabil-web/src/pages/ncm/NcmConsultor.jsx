@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Search, PlusCircle, List, Calculator, Trash2,
   Download, Save, RotateCcw, AlertCircle, CheckCircle,
-  Globe, RefreshCw, ChevronLeft, ChevronRight, Bookmark, X,
+  Globe, RefreshCw, ChevronLeft, ChevronRight, Bookmark, X, DatabaseBackup,
 } from 'lucide-react'
 import { downloadXls } from '../../lib/spreadsheet'
 import {
   getAllNcm, insertNcm, updateNcm, deleteNcm, searchNcm,
+  getLegacyNcm, importLegacyNcm,
   getAllHistorico, insertHistorico, deleteHistorico, clearHistorico,
 } from './ncmStorage'
 import { useNcmBusca, useNcmSincronizacao } from '../../hooks/useNcmOficial'
@@ -143,10 +144,15 @@ function TabelaOficialTab() {
     carregarStatus().catch(() => setOffline(true))
   }, [carregarStatus])
 
-  const carregarDadosLocais = useCallback(() => {
-    const map = {}
-    getAllNcm().forEach(n => { map[n.ncm] = n })
-    setDadosLocais(map)
+  const carregarDadosLocais = useCallback(async () => {
+    try {
+      const lista = await getAllNcm()
+      const map = {}
+      lista.forEach(n => { map[n.ncm] = n })
+      setDadosLocais(map)
+    } catch {
+      setDadosLocais({})
+    }
   }, [])
 
   useEffect(() => { carregarDadosLocais() }, [carregarDadosLocais])
@@ -372,11 +378,12 @@ function AnotacaoFiscalPanel({ ncmOficial, dadoExistente, onSalvar, onFechar }) 
     resultadoEconect:     dadoExistente?.resultadoEconect ?? '',
     estados:              estadosFromEntry(dadoExistente),
   })
-  const [msg, setMsg] = useState(null)
+  const [msg, setMsg]           = useState(null)
+  const [salvando, setSalvando] = useState(false)
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); setMsg(null) }
 
-  function salvar() {
+  async function salvar() {
     if (!form.nomeProduto.trim()) {
       setMsg({ type: 'error', text: 'Informe o nome/apelido do produto.' })
       return
@@ -392,8 +399,14 @@ function AnotacaoFiscalPanel({ ncmOficial, dadoExistente, onSalvar, onFechar }) 
       resultadoEconect:     form.resultadoEconect.trim(),
       estados:              estadosParsed,
     }
-    dadoExistente ? updateNcm(dadoExistente.id, entry) : insertNcm(entry)
-    onSalvar()
+    setSalvando(true)
+    try {
+      dadoExistente ? await updateNcm(dadoExistente.id, entry) : await insertNcm(entry)
+      onSalvar()
+    } catch (e) {
+      setMsg({ type: 'error', text: e.message })
+      setSalvando(false)
+    }
   }
 
   return (
@@ -447,8 +460,8 @@ function AnotacaoFiscalPanel({ ncmOficial, dadoExistente, onSalvar, onFechar }) 
       )}
 
       <div style={{ display: 'flex', gap: '.6rem' }}>
-        <button className="btn btn-primary btn-sm" onClick={salvar}>
-          <Save size={14} /> {dadoExistente ? 'Atualizar' : 'Salvar dados fiscais'}
+        <button className="btn btn-primary btn-sm" onClick={salvar} disabled={salvando}>
+          <Save size={14} /> {salvando ? 'Salvando…' : (dadoExistente ? 'Atualizar' : 'Salvar dados fiscais')}
         </button>
         <button className="btn btn-ghost btn-sm" onClick={onFechar}>Cancelar</button>
       </div>
@@ -458,14 +471,26 @@ function AnotacaoFiscalPanel({ ncmOficial, dadoExistente, onSalvar, onFechar }) 
 
 // ── Aba: Consulta ───────────────────────────────────────────────────
 function ConsultaTab() {
-  const [query,   setQuery]   = useState('')
-  const [results, setResults] = useState([])
-  const [searched, setSearched] = useState(false)
+  const [query,     setQuery]     = useState('')
+  const [results,   setResults]   = useState([])
+  const [searched,  setSearched]  = useState(false)
+  const [carregando, setCarregando] = useState(false)
+  const [erro,      setErro]      = useState(null)
 
-  function buscar(q) {
+  async function buscar(q) {
     const t = q.trim()
     setSearched(!!t)
-    setResults(t ? searchNcm(t) : [])
+    setErro(null)
+    if (!t) { setResults([]); return }
+    setCarregando(true)
+    try {
+      setResults(await searchNcm(t))
+    } catch (e) {
+      setErro(e.message)
+      setResults([])
+    } finally {
+      setCarregando(false)
+    }
   }
 
   function onChange(e) {
@@ -487,10 +512,21 @@ function ConsultaTab() {
           onChange={onChange}
           autoFocus
         />
-        <span className="hint">Pesquisa na base local cadastrada.</span>
+        <span className="hint">Pesquisa na base cadastrada (servidor).</span>
       </div>
 
-      {searched && results.length === 0 && (
+      {carregando && (
+        <p style={{ color: 'var(--muted)', fontSize: '.9rem' }}>Buscando…</p>
+      )}
+
+      {erro && (
+        <div className="alert alert-error">
+          <AlertCircle size={15} style={{ flexShrink: 0 }} />
+          {erro}
+        </div>
+      )}
+
+      {!carregando && !erro && searched && results.length === 0 && (
         <div className="alert alert-warn">
           <AlertCircle size={15} style={{ flexShrink: 0 }} />
           Nenhum NCM encontrado. Acesse a aba <b>Cadastro</b> para adicionar.
@@ -548,10 +584,11 @@ function emptyForm() {
 function CadastroTab({ onSaved }) {
   const [form, setForm] = useState(emptyForm)
   const [msg,  setMsg]  = useState(null)
+  const [salvando, setSalvando] = useState(false)
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); setMsg(null) }
 
-  function salvar() {
+  async function salvar() {
     if (!form.ncm.trim() || !form.nomeProduto.trim()) {
       setMsg({ type: 'error', text: 'NCM e Nome do Produto são obrigatórios.' })
       return
@@ -560,15 +597,22 @@ function CadastroTab({ onSaved }) {
     try { estadosParsed = parseEstados(form.estados) }
     catch (e) { setMsg({ type: 'error', text: e.message }); return }
 
-    insertNcm({
-      ncm:                  form.ncm.trim(),
-      nomeProduto:          form.nomeProduto.trim(),
-      tributadoNormalmente: form.tributadoNormalmente,
-      resultadoEconect:     form.resultadoEconect.trim(),
-      estados:              estadosParsed,
-    })
-    setMsg({ type: 'success', text: 'NCM cadastrada com sucesso!' })
-    setForm(emptyForm())
+    setSalvando(true)
+    try {
+      await insertNcm({
+        ncm:                  form.ncm.trim(),
+        nomeProduto:          form.nomeProduto.trim(),
+        tributadoNormalmente: form.tributadoNormalmente,
+        resultadoEconect:     form.resultadoEconect.trim(),
+        estados:              estadosParsed,
+      })
+      setMsg({ type: 'success', text: 'NCM cadastrada com sucesso!' })
+      setForm(emptyForm())
+    } catch (e) {
+      setMsg({ type: 'error', text: e.message })
+    } finally {
+      setSalvando(false)
+    }
   }
 
   return (
@@ -621,8 +665,8 @@ function CadastroTab({ onSaved }) {
       )}
 
       <div style={{ display: 'flex', gap: '.75rem' }}>
-        <button className="btn btn-primary" onClick={salvar}>
-          <Save size={15} /> Salvar NCM
+        <button className="btn btn-primary" onClick={salvar} disabled={salvando}>
+          <Save size={15} /> {salvando ? 'Salvando…' : 'Salvar NCM'}
         </button>
         <button className="btn btn-ghost" onClick={() => { setForm(emptyForm()); setMsg(null) }}>
           <RotateCcw size={15} /> Limpar
@@ -637,8 +681,22 @@ function ListagemTab() {
   const [data,   setData]   = useState([])
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('Todos')
+  const [carregando, setCarregando] = useState(true)
+  const [erro,       setErro]       = useState(null)
+  const [legado,     setLegado]     = useState(getLegacyNcm().length)
+  const [importando, setImportando] = useState(false)
 
-  const load = useCallback(() => setData(getAllNcm()), [])
+  const load = useCallback(async () => {
+    setCarregando(true)
+    setErro(null)
+    try {
+      setData(await getAllNcm())
+    } catch (e) {
+      setErro(e.message)
+    } finally {
+      setCarregando(false)
+    }
+  }, [])
   useEffect(() => { load() }, [load])
 
   const visible = data.filter(x => {
@@ -648,10 +706,28 @@ function ListagemTab() {
     return matchSearch && matchMva
   })
 
-  function excluir(id) {
+  async function excluir(id) {
     if (!confirm('Excluir este NCM?')) return
-    deleteNcm(id)
-    load()
+    try {
+      await deleteNcm(id)
+      await load()
+    } catch (e) {
+      setErro(e.message)
+    }
+  }
+
+  async function importarLocais() {
+    if (!confirm(`Importar ${legado} registro(s) do navegador para o servidor? Os dados locais serão removidos após a importação.`)) return
+    setImportando(true)
+    try {
+      await importLegacyNcm()
+      setLegado(0)
+      await load()
+    } catch (e) {
+      setErro(e.message)
+    } finally {
+      setImportando(false)
+    }
   }
 
   return (
@@ -660,6 +736,26 @@ function ListagemTab() {
         <span><List size={16} /> Listagem de NCMs</span>
         <span className="badge badge-gray">{data.length} registros</span>
       </div>
+
+      {legado > 0 && (
+        <div className="alert alert-info pc-import-banner" style={{ marginBottom: '1rem' }}>
+          <DatabaseBackup size={18} style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <strong>{legado} registro(s)</strong> no armazenamento local deste navegador.
+            Importe-os para o servidor para compartilhar com a equipe.
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={importarLocais} disabled={importando}>
+            <DatabaseBackup size={14} /> {importando ? 'Importando…' : 'Importar dados locais'}
+          </button>
+        </div>
+      )}
+
+      {erro && (
+        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+          <AlertCircle size={15} style={{ flexShrink: 0 }} />
+          {erro}
+        </div>
+      )}
 
       <div className="field-row cols-2" style={{ marginBottom: '1rem' }}>
         <div className="field" style={{ marginBottom: 0 }}>
@@ -675,7 +771,9 @@ function ListagemTab() {
         </div>
       </div>
 
-      {visible.length === 0 ? (
+      {carregando ? (
+        <p style={{ color: 'var(--muted)', fontSize: '.9rem' }}>Carregando…</p>
+      ) : visible.length === 0 ? (
         <div className="alert alert-info">
           <AlertCircle size={15} style={{ flexShrink: 0 }} />
           Nenhum NCM encontrado. Acesse a aba <b>Cadastro</b> para adicionar.

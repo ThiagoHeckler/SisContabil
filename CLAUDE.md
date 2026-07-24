@@ -107,41 +107,20 @@ Token-based Sanctum auth (Bearer tokens, not stateful SPA cookies).
 - Logout button + logged-in user shown in the sidebar (`Layout.jsx`).
 - **Note:** `hooks/useNcmOficial.js` has its own `apiFetch` (NCM is public); if NCM endpoints ever require auth, switch it to `lib/api.js`.
 
-### What needs to be implemented (in order)
+### Shared registries: localStorage → MySQL (implemented)
 
-#### 1. Migrate localStorage data → MySQL (shared across all users)
+The PIS/COFINS and NCM fiscal registries are now persisted server-side (shared across all users), replacing the old browser `localStorage`. Both sets of endpoints are behind `auth:sanctum`.
 
-**Context:** The accounting team shares rules — all users see the same PIS/COFINS and NCM fiscal data. There is no per-user data isolation needed for these registries.
+**Backend (`siscontabil-api/`):**
+- Table `pis_cofins_regras` + `PisCofinsRegra` model. CRUD at `/api/pis-cofins-regras` (`index` with `?busca=`, `store`, `update`, `destroy`) via `PisCofinsRegraController`. NCM is normalized to 8 digits server-side.
+- Table `ncm_fiscal` + `NcmFiscal` model. CRUD at `/api/ncm-fiscal` via `NcmFiscalController`. Per-state MVA/antecipação is stored in a `json` column `estados` (`{MT,PA,GO}`, PA also carries `temAntecipado`/`aliquotaAntecipado`). Legacy rows (root `temMva`/`mvaValor`, no `estados`) are supported via nullable `tem_mva`/`mva_valor` columns; the API returns `estados` when present, else the legacy `temMva`/`mvaValor`.
+- Bulk import: `POST /api/pis-cofins-regras/importar` and `POST /api/ncm-fiscal/importar` accept `{ itens: [...] }` and insert in one call (declared before the `apiResource` so the path isn't shadowed).
+- Controllers map DB snake_case ↔ API camelCase inline (`toApi`), so the frontend data shape is unchanged.
 
-**Data currently in localStorage (to be migrated to MySQL):**
-
-**`siscontabil_pis_cofins_regras`** (key in `pisCofinsStorage.js`):
-```json
-[
-  {
-    "ncm": "02013000",
-    "descricaoProduto": "CARNE BOVINA",
-    "codigoEnquadramento": "...",
-    "tabela": "...",
-    "lei": "..."
-  }
-]
-```
-→ Create table `pis_cofins_regras` in MySQL, CRUD endpoints at `/api/pis-cofins-regras`, protect with `auth:sanctum`.
-
-**`siscontabil_ncm_database`** (key in `ncmStorage.js`):
-Custom user annotations over official NCM codes — MVA %, ST antecipação by state, fiscal notes.
-→ Create table `ncm_fiscal` in MySQL, CRUD endpoints at `/api/ncm-fiscal`, protect with `auth:sanctum`.
-
-**Migration strategy for existing localStorage data:**
-- Add a one-time "Importar dados locais" button in the UI
-- It reads localStorage, POSTs to the new API endpoints, then clears localStorage
-- Show confirmation before clearing
-
-**Frontend changes:**
-- Replace all `localStorage.getItem/setItem` calls in `ncmStorage.js` and `pisCofinsStorage.js` with `fetch` calls to the new API endpoints
-- Keep the same data shape — just change the persistence layer
-- Handle loading/error states (API calls are async, localStorage is sync)
+**Frontend (`siscontabil-web/`):**
+- `ncmStorage.js` and `pisCofinsStorage.js` now call the API via `lib/api.js` (`apiFetch`, so token + 401 handling are automatic). All CRUD/search functions are **async** — same names, same data shapes, `Promise`-returning. Consumers (`NcmConsultor.jsx`, `PisCofinsAjuste.jsx`) were updated to `await` + loading/error/saving states.
+- ST histórico (`siscontabil_st_historico`) stays in `localStorage` — it's a local calculator log, not shared.
+- **One-time migration:** `importLegacyNcm()` / `importLegacyRegras()` read the old `localStorage` keys, POST them to `/importar`, then clear the key. A "Importar dados locais" banner appears (with a confirm dialog) in the NCM **Listagem** tab and the PIS/COFINS **Cadastro NCM** tab whenever legacy data is still present in the browser.
 
 ### What NOT to change
 - The DIFAL Calculator — pure client-side computation, no persistence needed

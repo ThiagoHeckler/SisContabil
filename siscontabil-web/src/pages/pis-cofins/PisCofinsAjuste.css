@@ -143,3 +143,12 @@
   font-weight: 600;
   color: #16a34a;
 }
+
+/* ── Banner de importação dos dados locais ── */
+.pc-import-banner {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+.pc-import-banner .btn { flex-shrink: 0; }

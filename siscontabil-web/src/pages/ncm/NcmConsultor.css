@@ -211,3 +211,12 @@
   line-height: 1.7;
   margin-bottom: 1rem;
 }
+
+/* ── Banner de importação dos dados locais ── */
+.pc-import-banner {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+.pc-import-banner .btn { flex-shrink: 0; }

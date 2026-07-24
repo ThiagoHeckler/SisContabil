@@ -1,58 +1,86 @@
 /**
- * Persistência em localStorage — substitui o SQLite do app Java original.
+ * Registro fiscal de NCM (MVA/antecipação por estado) — agora persistido no
+ * MySQL via API Laravel (/api/ncm-fiscal), protegido por auth:sanctum.
+ *
+ * O histórico do cálculo ST continua em localStorage (calculadora local,
+ * não compartilhada — ver CLAUDE.md).
  */
 
-const KEY_NCM  = 'siscontabil_ncm_database'
+import { apiFetch } from '../../lib/api'
+
+// ── NCM fiscal (API) ─────────────────────────────────────────────────
+
+export async function getAllNcm() {
+  return apiFetch('/ncm-fiscal')
+}
+
+export async function insertNcm(entry) {
+  return apiFetch('/ncm-fiscal', {
+    method: 'POST',
+    body: JSON.stringify(entry),
+  })
+}
+
+export async function updateNcm(id, patch) {
+  return apiFetch(`/ncm-fiscal/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function deleteNcm(id) {
+  return apiFetch(`/ncm-fiscal/${id}`, { method: 'DELETE' })
+}
+
+export async function searchNcm(term) {
+  const t = (term || '').trim()
+  const qs = t ? `?busca=${encodeURIComponent(t)}` : ''
+  return apiFetch(`/ncm-fiscal${qs}`)
+}
+
+// ── Migração dos dados locais (localStorage → API) ──────────────────
+
+const LEGACY_KEY = 'siscontabil_ncm_database'
+
+/** Lê o registro antigo do localStorage (array) sem removê-lo. */
+export function getLegacyNcm() {
+  try { return JSON.parse(localStorage.getItem(LEGACY_KEY)) || [] }
+  catch { return [] }
+}
+
+/** Envia os dados legados para a API em lote e limpa o localStorage. */
+export async function importLegacyNcm() {
+  const itens = getLegacyNcm()
+  if (!itens.length) return { importados: 0 }
+  const res = await apiFetch('/ncm-fiscal/importar', {
+    method: 'POST',
+    body: JSON.stringify({ itens }),
+  })
+  localStorage.removeItem(LEGACY_KEY)
+  return res
+}
+
+// ── ST Histórico (permanece em localStorage) ────────────────────────
+
 const KEY_HIST = 'siscontabil_st_historico'
 
-function load(key)         { try { return JSON.parse(localStorage.getItem(key)) || [] } catch { return [] } }
-function save(key, data)   { localStorage.setItem(key, JSON.stringify(data)) }
-function nextId(arr)       { return arr.length ? Math.max(...arr.map(x => x.id)) + 1 : 1 }
+function loadHist()      { try { return JSON.parse(localStorage.getItem(KEY_HIST)) || [] } catch { return [] } }
+function saveHist(data)   { localStorage.setItem(KEY_HIST, JSON.stringify(data)) }
+function nextId(arr)      { return arr.length ? Math.max(...arr.map(x => x.id)) + 1 : 1 }
 
-// ── NCM entries ──────────────────────────────────────────────────
-
-export function getAllNcm()         { return load(KEY_NCM) }
-
-export function insertNcm(entry) {
-  const list = getAllNcm()
-  const item = { ...entry, id: nextId(list) }
-  save(KEY_NCM, [...list, item])
-  return item
-}
-
-export function updateNcm(id, patch) {
-  const list = getAllNcm().map(x => x.id === id ? { ...x, ...patch } : x)
-  save(KEY_NCM, list)
-}
-
-export function deleteNcm(id) {
-  save(KEY_NCM, getAllNcm().filter(x => x.id !== id))
-}
-
-export function searchNcm(term) {
-  const t = (term || '').trim().toLowerCase()
-  if (!t) return getAllNcm()
-  return getAllNcm().filter(x =>
-    x.ncm.toLowerCase().includes(t) ||
-    x.nomeProduto.toLowerCase().includes(t)
-  )
-}
-
-// ── ST Histórico ─────────────────────────────────────────────────
-
-export function getAllHistorico()   { return load(KEY_HIST).reverse() }
+export function getAllHistorico()   { return loadHist().reverse() }
 
 export function insertHistorico(h) {
-  const list = load(KEY_HIST)
+  const list = loadHist()
   const item = { ...h, id: nextId(list) }
-  save(KEY_HIST, [...list, item])
+  saveHist([...list, item])
   return item
 }
 
 export function deleteHistorico(id) {
-  save(KEY_HIST, load(KEY_HIST).filter(x => x.id !== id))
+  saveHist(loadHist().filter(x => x.id !== id))
 }
 
 export function clearHistorico() {
-  save(KEY_HIST, [])
+  saveHist([])
 }
