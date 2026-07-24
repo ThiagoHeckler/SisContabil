@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Calculator, FileSpreadsheet, Search, Percent, ArrowRight } from 'lucide-react'
+import { Calculator, FileSpreadsheet, Search, Percent, FileCheck2, ArrowRight } from 'lucide-react'
 import './Dashboard.css'
 
 const MODULES = [
@@ -34,6 +34,14 @@ const MODULES = [
     bg: '#fffbeb',
     title: 'Ajuste de PIS e COFINS',
     desc: 'Importe uma planilha de itens (código, NCM, descrição) e identifique os enquadramentos de alíquota zero por NCM.',
+  },
+  {
+    to: '/sped',
+    icon: FileCheck2,
+    color: '#0f766e',
+    bg: '#f0fdfa',
+    title: 'Importação SPED',
+    desc: 'Confira quais XMLs de NF-e correspondem a uma lista de chaves de acesso e baixe os conferidos em um ZIP.',
   },
 ]
 
