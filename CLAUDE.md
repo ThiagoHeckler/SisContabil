@@ -86,29 +86,30 @@ docker compose up -d --build
 - Full Docker deploy working on `192.168.1.75:8080`
 - 15,156 official NCM records migrated from SQLite → MySQL
 - All user data (custom NCM fiscal rules, PIS/COFINS rules) still lives in **browser localStorage** — this is a known limitation
-- **No authentication system** — the app is fully open, no login required
+- **Authentication implemented** (Laravel Sanctum token auth + React login) — see below.
+
+### Authentication (implemented)
+Token-based Sanctum auth (Bearer tokens, not stateful SPA cookies).
+
+**Backend (`siscontabil-api/`):**
+- `User` model uses `HasApiTokens`.
+- `POST /api/auth/login` (public) — email + password → `{ token, user }` (422 on bad credentials).
+- `POST /api/auth/logout` (`auth:sanctum`) — revokes the current token.
+- `GET /api/auth/me` (`auth:sanctum`) — returns the authenticated user.
+- Admin user seeded via `php artisan db:seed` (`DatabaseSeeder`, idempotent `updateOrCreate`). Credentials come from `ADMIN_NAME`/`ADMIN_EMAIL`/`ADMIN_PASSWORD` in `.env` (default `admin@siscontabil.local` / `siscontabil` — change before seeding in production).
+- NCM read endpoints (`GET /api/ncm*`) stay public; future data endpoints go behind `auth:sanctum`.
+
+**Frontend (`siscontabil-web/`):**
+- `lib/api.js` — central `apiFetch`: injects `Authorization: Bearer {token}` from `localStorage` (key `siscontabil_token`), and on any 401 clears the token and fires an `AUTH_EXPIRED_EVENT`.
+- `hooks/useAuth.jsx` — `AuthProvider` + `useAuth()`; validates the stored token via `/auth/me` on boot, exposes `login`/`logout`/`user`/`carregando`.
+- `pages/auth/Login.jsx` (`/login`) — email + password form.
+- `App.jsx` gates all app routes on `user`; unauthenticated users only reach `/login`.
+- Logout button + logged-in user shown in the sidebar (`Layout.jsx`).
+- **Note:** `hooks/useNcmOficial.js` has its own `apiFetch` (NCM is public); if NCM endpoints ever require auth, switch it to `lib/api.js`.
 
 ### What needs to be implemented (in order)
 
-#### 1. Authentication (Laravel Sanctum + React login screen)
-Laravel Sanctum is already installed (`laravel/sanctum ^4.0` in `composer.json`). Implement:
-
-**Backend (`siscontabil-api/`):**
-- `POST /api/auth/login` — accepts email + password, returns Sanctum token
-- `POST /api/auth/logout` — revokes token
-- `GET /api/auth/me` — returns authenticated user data
-- Seed at least one admin user (`php artisan db:seed`)
-- Protect all future data endpoints with `auth:sanctum` middleware
-- Keep NCM read endpoints (`GET /api/ncm`) public — they're read-only official data
-
-**Frontend (`siscontabil-web/`):**
-- Login page (`/login`) with email + password form
-- Store Sanctum token in `localStorage` (key: `siscontabil_token`)
-- `Authorization: Bearer {token}` header on all authenticated API calls
-- Redirect to `/login` if token is missing or expired (401 response)
-- Logout button in the sidebar (`Layout.jsx`)
-
-#### 2. Migrate localStorage data → MySQL (shared across all users)
+#### 1. Migrate localStorage data → MySQL (shared across all users)
 
 **Context:** The accounting team shares rules — all users see the same PIS/COFINS and NCM fiscal data. There is no per-user data isolation needed for these registries.
 

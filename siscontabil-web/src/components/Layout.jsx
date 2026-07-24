@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard, Calculator, FileSpreadsheet, Search, Menu, X, BookOpen, Percent
+  LayoutDashboard, Calculator, FileSpreadsheet, Search, Menu, X, BookOpen, Percent,
+  LogOut, User as UserIcon
 } from 'lucide-react'
+import { useAuth } from '../hooks/useAuth'
 import './Layout.css'
 
 const NAV = [
@@ -15,6 +17,7 @@ const NAV = [
 
 export default function Layout({ children }) {
   const [open, setOpen] = useState(false)
+  const { user, logout } = useAuth()
 
   return (
     <div className="layout">
@@ -46,7 +49,16 @@ export default function Layout({ children }) {
         </nav>
 
         <div className="sidebar-footer">
-          <span>v0.1.0</span>
+          {user && (
+            <div className="sidebar-user">
+              <UserIcon size={16} />
+              <span className="sidebar-user__name" title={user.email}>{user.name}</span>
+            </div>
+          )}
+          <button className="nav-item nav-item--logout" onClick={logout}>
+            <LogOut size={18} /> Sair
+          </button>
+          <span className="sidebar-version">v0.1.0</span>
         </div>
       </aside>
 
