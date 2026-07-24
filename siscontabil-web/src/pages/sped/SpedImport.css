@@ -106,3 +106,24 @@
 .sped-empty { color: var(--muted); font-size: .9rem; }
 .sped-list { margin: 0; padding-left: 1.1rem; font-size: .85rem; color: var(--muted); }
 .sped-list li { margin: .15rem 0; }
+
+/* Card recolhível */
+.sped-collapse-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+.sped-collapse-title { display: inline-flex; align-items: center; gap: .5rem; }
+.sped-collapse-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  padding: .2rem .35rem;
+  display: inline-flex;
+  align-items: center;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.sped-collapse-btn:hover { color: var(--green); border-color: var(--green); background: var(--green-bg); }

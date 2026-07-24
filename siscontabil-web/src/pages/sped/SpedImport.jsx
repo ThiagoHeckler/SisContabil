@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import {
   FileCheck2, Upload, Download, RotateCcw, CheckCircle, AlertCircle,
-  KeyRound, FileX2, FileWarning,
+  KeyRound, FileX2, FileWarning, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { extractChave, conferir } from './spedMatcher'
 import { createZip } from '../../lib/zip'
@@ -201,6 +201,27 @@ export default function SpedImport() {
   )
 }
 
+// ── Card recolhível (só visual) ──────────────────────────────────────
+function CollapsibleCard({ icon: Icon, title, children, defaultOpen = true }) {
+  const [aberto, setAberto] = useState(defaultOpen)
+  return (
+    <div className="card">
+      <div className="card-title sped-collapse-header">
+        <span className="sped-collapse-title"><Icon size={16} /> {title}</span>
+        <button
+          className="sped-collapse-btn"
+          onClick={() => setAberto(o => !o)}
+          aria-expanded={aberto}
+          title={aberto ? 'Recolher' : 'Expandir'}
+        >
+          {aberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+      </div>
+      {aberto && children}
+    </div>
+  )
+}
+
 // ── Resultado da conferência ─────────────────────────────────────────
 function Resultado({ resultado, onBaixar }) {
   const { conferidos, duplicados, naoSolicitados, semChave, naoEncontradas, invalidas, totalPedidas } = resultado
@@ -253,8 +274,7 @@ function Resultado({ resultado, onBaixar }) {
       )}
 
       {/* Conferidos */}
-      <div className="card">
-        <div className="card-title"><CheckCircle size={16} /> XMLs conferidos ({conferidos.length})</div>
+      <CollapsibleCard icon={CheckCircle} title={`XMLs conferidos (${conferidos.length})`}>
         {conferidos.length === 0 ? (
           <p className="sped-empty">Nenhum XML correspondeu às chaves informadas.</p>
         ) : (
@@ -272,12 +292,11 @@ function Resultado({ resultado, onBaixar }) {
             </table>
           </div>
         )}
-      </div>
+      </CollapsibleCard>
 
       {/* Chaves sem XML */}
       {naoEncontradas.length > 0 && (
-        <div className="card">
-          <div className="card-title"><FileX2 size={16} /> Chaves sem XML correspondente ({naoEncontradas.length})</div>
+        <CollapsibleCard icon={FileX2} title={`Chaves sem XML correspondente (${naoEncontradas.length})`}>
           <div className="sped-table-wrap">
             <table className="data-table">
               <thead><tr><th>Chave de acesso</th></tr></thead>
@@ -288,13 +307,12 @@ function Resultado({ resultado, onBaixar }) {
               </tbody>
             </table>
           </div>
-        </div>
+        </CollapsibleCard>
       )}
 
       {/* Duplicados descartados */}
       {duplicados.length > 0 && (
-        <div className="card">
-          <div className="card-title"><FileWarning size={16} /> XMLs duplicados descartados ({duplicados.length})</div>
+        <CollapsibleCard icon={FileWarning} title={`XMLs duplicados descartados (${duplicados.length})`}>
           <p className="sped-empty" style={{ marginBottom: '.5rem' }}>
             Já havia um XML para estas chaves; os arquivos abaixo não foram incluídos no ZIP:
           </p>
@@ -311,20 +329,19 @@ function Resultado({ resultado, onBaixar }) {
               </tbody>
             </table>
           </div>
-        </div>
+        </CollapsibleCard>
       )}
 
       {/* XMLs sem chave legível */}
       {semChave.length > 0 && (
-        <div className="card">
-          <div className="card-title"><FileWarning size={16} /> XMLs sem chave legível ({semChave.length})</div>
+        <CollapsibleCard icon={FileWarning} title={`XMLs sem chave legível (${semChave.length})`}>
           <p className="sped-empty" style={{ marginBottom: '.5rem' }}>
             Não foi possível extrair uma chave de 44 dígitos destes arquivos:
           </p>
           <ul className="sped-list">
             {semChave.map(a => <li key={a.name} className="mono">{a.name}</li>)}
           </ul>
-        </div>
+        </CollapsibleCard>
       )}
     </div>
   )
