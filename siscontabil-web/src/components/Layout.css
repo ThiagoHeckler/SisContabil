@@ -79,16 +79,34 @@
   text-overflow: ellipsis;
 }
 
-.nav-item--logout {
+.nav-item--logout,
+.nav-item--theme {
   width: 100%;
   border: none;
   background: none;
   cursor: pointer;
   font-family: inherit;
+  font-size: .9rem;
 }
+.nav-item--theme:hover { background: rgba(255,255,255,.1); color: #fff; }
 .nav-item--logout:hover { background: rgba(220,38,38,.18); color: #fecaca; }
 
 .sidebar-version { padding-left: .35rem; }
+
+/* Botão de tema no topbar (mobile) */
+.topbar-theme {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  padding: .35rem .5rem;
+  display: inline-flex;
+  align-items: center;
+  transition: color .15s, border-color .15s;
+}
+.topbar-theme:hover { color: var(--green); border-color: var(--green); }
 
 /* ── Main ── */
 .main-wrapper {

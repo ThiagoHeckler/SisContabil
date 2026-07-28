@@ -7,14 +7,37 @@
   --green-bg: #f0faf5;
   --accent:   #f5c518;
   --bg:       #f1f5f9;
+  --bg-alt:   #f8f9fa;
   --sidebar:  #0f3d26;
   --card:     #ffffff;
   --text:     #1e2530;
   --muted:    #64748b;
   --border:   #e2e8f0;
+  --input-bg: #ffffff;
+  --hover:    #f8fafc;
+  --scroll:   #cbd5e1;
   --radius:   10px;
   --shadow:   0 1px 6px rgba(0,0,0,.08);
   --sidebar-w: 240px;
+}
+
+:root[data-theme="dark"] {
+  --green:    #2ba86a;
+  --green-d:  #1e8a54;
+  --green-l:  #34c07d;
+  --green-bg: rgba(43,168,106,.14);
+  --accent:   #f5c518;
+  --bg:       #0d1520;
+  --bg-alt:   #1b2735;
+  --sidebar:  #0a2a1a;
+  --card:     #16202e;
+  --text:     #e5e9f0;
+  --muted:    #93a1b5;
+  --border:   #2b3648;
+  --input-bg: #0f1a27;
+  --hover:    rgba(255,255,255,.045);
+  --scroll:   #3a475a;
+  --shadow:   0 1px 6px rgba(0,0,0,.45);
 }
 
 html, body, #root {
@@ -26,12 +49,13 @@ body {
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
+  transition: background .2s, color .2s;
 }
 
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 99px; }
 
 /* ── Typography helpers ── */
 h1 { font-size: 1.6rem; font-weight: 700; }
@@ -51,7 +75,7 @@ textarea {
   border-radius: 6px;
   font-size: .95rem;
   color: var(--text);
-  background: #fff;
+  background: var(--input-bg);
   transition: border-color .15s, box-shadow .15s;
 }
 
@@ -170,7 +194,7 @@ input:focus, select:focus, textarea:focus {
   vertical-align: middle;
 }
 .data-table tr:last-child td { border-bottom: none; }
-.data-table tr:hover td { background: #f8fafc; }
+.data-table tr:hover td { background: var(--hover); }
 .data-table .right { text-align: right; }
 .data-table .mono  { font-family: monospace; }
 
@@ -212,3 +236,17 @@ input:focus, select:focus, textarea:focus {
   font-weight: 700;
   font-size: 1rem;
 }
+
+/* ── Ajustes do tema escuro para chips/alertas (fundos claros fixos) ── */
+:root[data-theme="dark"] .btn-secondary:hover { background: rgba(43,168,106,.22); }
+:root[data-theme="dark"] .btn-ghost:hover     { background: var(--bg-alt); }
+
+:root[data-theme="dark"] .badge-green  { background: rgba(16,185,129,.20); color: #6ee7b7; }
+:root[data-theme="dark"] .badge-yellow { background: rgba(245,158,11,.20);  color: #fcd34d; }
+:root[data-theme="dark"] .badge-blue   { background: rgba(59,130,246,.22);  color: #93c5fd; }
+:root[data-theme="dark"] .badge-gray   { background: var(--border);          color: var(--muted); }
+
+:root[data-theme="dark"] .alert-info    { background: rgba(59,130,246,.13); color: #bfdbfe; }
+:root[data-theme="dark"] .alert-success { background: rgba(34,197,94,.13);  color: #bbf7d0; }
+:root[data-theme="dark"] .alert-warn    { background: rgba(245,158,11,.13); color: #fde68a; }
+:root[data-theme="dark"] .alert-error   { background: rgba(239,68,68,.13);  color: #fecaca; }

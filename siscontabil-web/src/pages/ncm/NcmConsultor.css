@@ -220,3 +220,6 @@
   flex-wrap: wrap;
 }
 .pc-import-banner .btn { flex-shrink: 0; }
+
+/* ── Tema escuro ── */
+:root[data-theme="dark"] .btn-icon-red:hover { background: rgba(220,38,38,.2); }

@@ -152,3 +152,10 @@
   flex-wrap: wrap;
 }
 .pc-import-banner .btn { flex-shrink: 0; }
+
+/* ── Tema escuro: cards de stats ── */
+:root[data-theme="dark"] .pc-stat--dif    { background: rgba(34,197,94,.15); }
+:root[data-theme="dark"] .pc-stat--dif    .pc-stat__val { color: #86efac; }
+:root[data-theme="dark"] .pc-stat--normal { background: rgba(255,255,255,.05); }
+:root[data-theme="dark"] .pc-stat--normal .pc-stat__val { color: #cbd5e1; }
+:root[data-theme="dark"] .btn-icon-red:hover { background: rgba(220,38,38,.2); }

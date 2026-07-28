@@ -153,3 +153,26 @@
 .nfe-formula--st    { background: #eff6ff; border-color: #3b82f6; }
 .nfe-formula--dif   { background: #f0fdf4; border-color: #22c55e; }
 .nfe-formula--difal { background: #fff7ed; border-color: #f97316; }
+
+/* ── Tema escuro: cards de stats, badges e fórmulas ── */
+:root[data-theme="dark"] .nfe-stat--st     { background: rgba(59,130,246,.15); }
+:root[data-theme="dark"] .nfe-stat--st     .nfe-stat__val { color: #93c5fd; }
+:root[data-theme="dark"] .nfe-stat--dif    { background: rgba(34,197,94,.15); }
+:root[data-theme="dark"] .nfe-stat--dif    .nfe-stat__val { color: #86efac; }
+:root[data-theme="dark"] .nfe-stat--difal  { background: rgba(249,115,22,.15); }
+:root[data-theme="dark"] .nfe-stat--difal  .nfe-stat__val { color: #fdba74; }
+:root[data-theme="dark"] .nfe-stat--normal { background: rgba(255,255,255,.05); }
+:root[data-theme="dark"] .nfe-stat--normal .nfe-stat__val { color: #cbd5e1; }
+:root[data-theme="dark"] .nfe-stat--stpago { background: rgba(139,92,246,.18); }
+:root[data-theme="dark"] .nfe-stat--stpago .nfe-stat__val { color: #c4b5fd; }
+
+:root[data-theme="dark"] .rule-st     { background: rgba(59,130,246,.22); color: #93c5fd; }
+:root[data-theme="dark"] .rule-dif    { background: rgba(34,197,94,.22); color: #86efac; }
+:root[data-theme="dark"] .rule-difal  { background: rgba(249,115,22,.22); color: #fdba74; }
+:root[data-theme="dark"] .rule-normal { background: rgba(255,255,255,.08); color: #cbd5e1; }
+:root[data-theme="dark"] .rule-stpago { background: rgba(139,92,246,.24); color: #c4b5fd; }
+
+:root[data-theme="dark"] .nfe-formula--st    { background: rgba(59,130,246,.12); }
+:root[data-theme="dark"] .nfe-formula--dif   { background: rgba(34,197,94,.12); }
+:root[data-theme="dark"] .nfe-formula--difal { background: rgba(249,115,22,.12); }
+:root[data-theme="dark"] .nfe-basecalc { color: #93c5fd; }

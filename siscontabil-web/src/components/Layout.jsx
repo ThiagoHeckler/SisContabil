@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Calculator, FileSpreadsheet, Search, Menu, X, BookOpen, Percent,
-  LogOut, User as UserIcon, FileCheck2
+  LogOut, User as UserIcon, FileCheck2, Sun, Moon
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import { useTheme } from '../hooks/useTheme'
 import './Layout.css'
 
 const NAV = [
@@ -19,6 +20,7 @@ const NAV = [
 export default function Layout({ children }) {
   const [open, setOpen] = useState(false)
   const { user, logout } = useAuth()
+  const { theme, toggle } = useTheme()
 
   return (
     <div className="layout">
@@ -56,6 +58,10 @@ export default function Layout({ children }) {
               <span className="sidebar-user__name" title={user.email}>{user.name}</span>
             </div>
           )}
+          <button className="nav-item nav-item--theme" onClick={toggle}>
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            {theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+          </button>
           <button className="nav-item nav-item--logout" onClick={logout}>
             <LogOut size={18} /> Sair
           </button>
@@ -70,6 +76,14 @@ export default function Layout({ children }) {
             {open ? <X size={20} /> : <Menu size={20} />}
           </button>
           <span className="topbar-title">SisContabil</span>
+          <button
+            className="topbar-theme"
+            onClick={toggle}
+            title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+            aria-label="Alternar tema"
+          >
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
         </header>
 
         <main className="main-content">
